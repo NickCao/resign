@@ -52,7 +52,9 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "registry-crates-io": "registry-crates-io"
+        "registry-crates-io": [
+          "registry-crates-io"
+        ]
       },
       "locked": {
         "lastModified": 1658025148,
@@ -71,11 +73,11 @@
     "registry-crates-io": {
       "flake": false,
       "locked": {
-        "lastModified": 1658023584,
-        "narHash": "sha256-LK3+4brQjOQEs82Xuo4pcn4pCs9/7rYiI64V7aNd240=",
+        "lastModified": 1658060180,
+        "narHash": "sha256-1d1MELQa+aeMIKFt8rnHiJQr+bm/UFrSeE3Hx4vZMzk=",
         "owner": "rust-lang",
         "repo": "crates.io-index",
-        "rev": "1ce12a7e3367a2a673f91f07ab7cc505a0b8f069",
+        "rev": "d938934e40b99fc23f4375a91ad4e56739522d43",
         "type": "github"
       },
       "original": {
@@ -88,7 +90,8 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "nocargo": "nocargo"
+        "nocargo": "nocargo",
+        "registry-crates-io": "registry-crates-io"
       }
     }
   },

@@ -2,9 +2,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable-small";
     flake-utils.url = "github:numtide/flake-utils";
+    registry-crates-io = { url = "github:rust-lang/crates.io-index"; flake = false; };
     nocargo = {
       url = "github:oxalica/nocargo";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.registry-crates-io.follows = "registry-crates-io";
     };
   };
   outputs = { self, nixpkgs, flake-utils, nocargo, ... }:
