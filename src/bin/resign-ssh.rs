@@ -47,7 +47,7 @@ impl Agent for Backend {
                     pubkey_blob.extend(data);
                     return Ok(Message::IdentitiesAnswer(vec![Identity {
                         pubkey_blob,
-                        comment: format!("cardno:{}", ard.application_id().unwrap().serial()),
+                        comment: ard.application_id().unwrap().ident(),
                     }]));
                 }
                 Ok(Message::Failure)
