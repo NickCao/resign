@@ -4,6 +4,7 @@ use openpgp_card_sequoia::card::Open;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 
+use openpgp::armor;
 use openpgp::parse::Parse;
 use openpgp::serialize::stream::{Armorer, Message, Signer};
 use openpgp::Cert;
@@ -62,7 +63,7 @@ fn main() {
             .unwrap();
         let stdout = std::io::stdout();
         let message = Message::new(stdout);
-        let message = Armorer::new(message).build().unwrap();
+        let message = Armorer::new(message).kind(armor::Kind::Signature).build().unwrap();
         let signer = Signer::new(message, s);
         let mut signer = signer.detached().build().unwrap();
         std::io::copy(&mut std::io::stdin(), &mut signer).unwrap();
