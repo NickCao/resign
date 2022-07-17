@@ -1,4 +1,6 @@
+use anyhow::{anyhow, Result};
 use clap::Parser;
+use libsystemd::activation::IsType;
 use openpgp::packet::Key;
 use openpgp::parse::Parse;
 use openpgp::policy::StandardPolicy;
@@ -11,10 +13,14 @@ use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use sequoia_openpgp as openpgp;
 use service_binding::Binding;
+use service_binding::Listener;
 use sha2::{Digest, Sha256, Sha512};
 use ssh_agent_lib::agent::Agent;
 use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::{message::Identity, Message};
+use std::net::TcpListener;
+use std::os::unix::io::{FromRawFd, IntoRawFd};
+use std::os::unix::net::UnixListener;
 
 struct Backend {}
 
@@ -94,8 +100,29 @@ pub enum BackendError {
     Unknown(String),
 }
 
-fn main() {
+fn main() -> Result<()> {
     let agent = Backend {};
-    let binding: Binding = "unix:///tmp/agent".parse().unwrap();
-    agent.listen(binding.try_into().unwrap()).unwrap();
+    let binding: Listener = if let Ok(fds) = libsystemd::activation::receive_descriptors(false) {
+        if fds.len() != 1 {
+            return Err(anyhow!("exactly one file descriptor should be passed"));
+        }
+        let fd = fds.iter().next().unwrap();
+        unsafe {
+            if fd.is_unix() {
+                Listener::Unix(UnixListener::from_raw_fd(fd.clone().into_raw_fd()))
+            } else if fd.is_inet() {
+                Listener::Tcp(TcpListener::from_raw_fd(fd.clone().into_raw_fd()))
+            } else {
+                return Err(anyhow!("unsupported file descriptor type"));
+            }
+        }
+    } else {
+        let args = std::env::args();
+        if args.len() != 2 {
+            return Err(anyhow!("usage: resign_ssh <listen address>"));
+        }
+        args.skip(1).next().unwrap().parse::<Binding>()?.try_into()?
+    };
+    agent.listen(binding).unwrap();
+    Ok(())
 }
