@@ -121,7 +121,11 @@ fn main() -> Result<()> {
         if args.len() != 2 {
             return Err(anyhow!("usage: resign_ssh <listen address>"));
         }
-        args.skip(1).next().unwrap().parse::<Binding>()?.try_into()?
+        args.skip(1)
+            .next()
+            .unwrap()
+            .parse::<Binding>()?
+            .try_into()?
     };
     agent.listen(binding).unwrap();
     Ok(())
