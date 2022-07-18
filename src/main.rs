@@ -60,12 +60,14 @@ fn main() -> Result<()> {
         for mut card in PcscBackend::cards(None)? {
             let mut pgp = OpenPgp::new(&mut card);
             let mut open = Open::new(pgp.transaction()?)?;
+
             let key = open.public_key(KeyType::Signing)?;
-            let key = if let PublicKeyMaterial::E(key) = key {
-                Key::V4(Key4::import_public_ed25519(key.data(), None)?)
-            } else {
-                unimplemented!()
+            let key = match key {
+                PublicKeyMaterial::E(k) => Key::V4(Key4::import_public_ed25519(k.data(), None)?),
+                PublicKeyMaterial::R(k) => Key::V4(Key4::import_public_rsa(k.v(), k.n(), None)?),
+                _ => unimplemented!(),
             };
+
             let mut input =
                 PassphraseInput::with_default_binary().ok_or(anyhow!("pinentry not found"))?;
             let pin = input
@@ -74,6 +76,7 @@ fn main() -> Result<()> {
                 .interact()
                 .map_err(|e| anyhow!(e.to_string()))?;
             open.verify_user_for_signing(pin.expose_secret().as_bytes())?;
+
             let mut sign = open
                 .signing_card()
                 .ok_or(anyhow!("failed to open signing card"))?;
