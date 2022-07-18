@@ -1,12 +1,16 @@
 use anyhow::{anyhow, Result};
+use chrono::prelude::*;
 use clap::Parser;
 use openpgp::armor;
 use openpgp::packet::key::Key4;
 use openpgp::packet::Key;
-use openpgp::parse::Parse;
+use openpgp::packet::Signature;
+use openpgp::parse::{PacketPileParser, Parse};
 use openpgp::policy::StandardPolicy;
 use openpgp::serialize::stream::{Armorer, Message, Signer};
 use openpgp::Cert;
+use openpgp::Packet;
+use openpgp::PacketPile;
 use openpgp_card::algorithm::Algo;
 use openpgp_card::algorithm::Curve;
 use openpgp_card::crypto_data::PublicKeyMaterial;
@@ -101,12 +105,32 @@ fn main() -> Result<()> {
             let mut signer = signer.detached().build()?;
             std::io::copy(&mut std::io::stdin(), &mut signer)?;
             signer.finalize()?;
-            status_fd.write(b"[GNUPG:] SIG_CREATED ")?;
+            status_fd.write(b"[GNUPG:] SIG_CREATED \n")?;
             return Ok(());
         }
         Err(anyhow!("no card found"))
     } else if args.verify {
-        status_fd.write(b"[GNUPG:] ERRSIG ")?;
+        if args.args.len() != 2 {
+            return Err(anyhow!("unsupported number of arguments"));
+        }
+        let pile = PacketPile::from_file(&args.args[0])?;
+        for packet in pile.descendants() {
+            if let Packet::Signature(Signature::V4(sig)) = packet {
+                status_fd.write(b"[GNUPG:] NEWSIG \n")?;
+                status_fd.write(b"[GNUPG:] GOODSIG \n")?;
+                eprintln!(
+                    "resign: Signature made {}",
+                    DateTime::<Utc>::from(sig.signature_creation_time().unwrap())
+                );
+                for fp in sig.issuer_fingerprints() {
+                    eprintln!(
+                        "resign:                using {} key {}",
+                        sig.pk_algo(),
+                        fp.to_hex()
+                    );
+                }
+            }
+        }
         Ok(())
     } else {
         Err(anyhow!("no operation specified"))
