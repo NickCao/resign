@@ -7,3 +7,6 @@ I'm not a huge fan of GnuPG and OpenPGP, but for signing git commits, the only t
 ## limitations
 - cannot cache pin due to the lack of an agent
 - cannot verify signatures
+
+## references
+[GnuPG: Format of the –status-fd output](https://github.com/gpg/gnupg/blob/master/doc/DETAILS#format-of-the-status-fd-output)
