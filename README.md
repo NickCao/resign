@@ -9,4 +9,5 @@ I'm not a huge fan of GnuPG and OpenPGP, but for signing git commits, the only t
 - cannot verify signatures
 
 ## references
-[GnuPG: Format of the –status-fd output](https://github.com/gpg/gnupg/blob/master/doc/DETAILS#format-of-the-status-fd-output)
+[GnuPG: Format of the –status-fd output](https://github.com/gpg/gnupg/blob/master/doc/DETAILS#format-of-the-status-fd-output)  
+[git: GPG interface](https://github.com/git/git/blob/master/gpg-interface.c)
