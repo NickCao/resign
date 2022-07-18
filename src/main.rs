@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use std::time::SystemTime;
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 use openpgp::armor;
@@ -37,7 +38,7 @@ struct Args {
     /// create ascii armored output
     #[clap(short = 'a', long = "armor")]
     armor: bool,
-    /// use USER-ID to sign or decrypt (ctime of signing subkey)
+    /// use USER-ID to sign or decrypt (ignored, always uses signing subkey)
     #[clap(short = 'u', long = "local-user", name = "USER-ID")]
     local_user: Option<String>,
     /// write special status strings to the file descriptor n
@@ -59,13 +60,14 @@ fn main() -> Result<()> {
     if args.sign {
         assert!(args.detach_sign);
         assert!(args.armor);
-        assert!(args.local_user.is_some());
         for mut card in PcscBackend::cards(None)? {
             let mut pgp = OpenPgp::new(&mut card);
             let mut open = Open::new(pgp.transaction()?)?;
 
+            let ctime = open.key_generation_times()?;
+            let ctime: SystemTime = ctime.signature().unwrap().to_datetime().into();
+
             let key = open.public_key(KeyType::Signing)?;
-            let ctime = UNIX_EPOCH + Duration::from_secs(args.local_user.unwrap().parse()?);
             let key = match key {
                 PublicKeyMaterial::E(k) => Key::V4(Key4::import_public_ed25519(k.data(), ctime)?),
                 PublicKeyMaterial::R(k) => Key::V4(Key4::import_public_rsa(k.v(), k.n(), ctime)?),
