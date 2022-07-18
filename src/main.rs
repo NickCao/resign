@@ -1,9 +1,14 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use openpgp::armor;
+use openpgp::packet::key::Key4;
+use openpgp::packet::Key;
 use openpgp::parse::Parse;
+use openpgp::policy::StandardPolicy;
 use openpgp::serialize::stream::{Armorer, Message, Signer};
 use openpgp::Cert;
+use openpgp_card::crypto_data::PublicKeyMaterial;
+use openpgp_card::KeyType;
 use openpgp_card::OpenPgp;
 use openpgp_card_pcsc::PcscBackend;
 use openpgp_card_sequoia::card::Open;
@@ -30,7 +35,7 @@ struct Args {
     /// create ascii armored output
     #[clap(short = 'a', long = "armor")]
     armor: bool,
-    /// use USER-ID to sign or decrypt (path to certificate)
+    /// use USER-ID to sign or decrypt (ignored, always use signing subkey)
     #[clap(short = 'u', long = "local-user", name = "USER-ID")]
     local_user: Option<String>,
     /// write special status strings to the file descriptor n
@@ -52,10 +57,15 @@ fn main() -> Result<()> {
     if args.sign {
         assert!(args.detach_sign);
         assert!(args.armor);
-        assert!(args.local_user.is_some());
         for mut card in PcscBackend::cards(None)? {
             let mut pgp = OpenPgp::new(&mut card);
             let mut open = Open::new(pgp.transaction()?)?;
+            let key = open.public_key(KeyType::Signing)?;
+            let key = if let PublicKeyMaterial::E(key) = key {
+                Key::V4(Key4::import_public_ed25519(key.data(), None)?)
+            } else {
+                unimplemented!()
+            };
             let mut input =
                 PassphraseInput::with_default_binary().ok_or(anyhow!("pinentry not found"))?;
             let pin = input
@@ -67,8 +77,7 @@ fn main() -> Result<()> {
             let mut sign = open
                 .signing_card()
                 .ok_or(anyhow!("failed to open signing card"))?;
-            let cert = Cert::from_file(args.local_user.unwrap())?;
-            let singer = sign.signer(&cert, &|| {})?;
+            let singer = sign.signer_from_pubkey(key, &|| {});
             let message = Message::new(std::io::stdout());
             let armored = Armorer::new(message).kind(armor::Kind::Signature).build()?;
             let signer = Signer::new(armored, singer);
