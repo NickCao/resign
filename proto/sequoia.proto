@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package sequoia;
+
+import "google/protobuf/empty.proto";
+
+message PublicResponse {
+  bytes key = 1;
+}
+
+enum HashAlgorithm {
+  MD5    = 0;
+  SHA1   = 1;
+  RipeMD = 2;
+  SHA256 = 3;
+  SHA384 = 4;
+  SHA512 = 5;
+  SHA224 = 6;
+}
+
+message SignRequest {
+  HashAlgorithm hash_algo = 1;
+  bytes digest            = 2;
+}
+
+message SignResponse {
+  bytes signature = 1;
+}
+
+message AcceptableHashesResponse {
+  repeated HashAlgorithm hash_algos = 1;
+}
+
+service Signer {
+  rpc Public(google.protobuf.Empty) returns (PublicResponse);
+  rpc Sign(SignRequest) returns (SignResponse);
+  rpc AcceptableHashes(google.protobuf.Empty) returns (AcceptableHashesResponse);
+}

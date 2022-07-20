@@ -5,7 +5,7 @@ use openpgp::armor;
 use openpgp::packet::key::Key4;
 use openpgp::packet::Key;
 use openpgp::packet::Signature;
-use openpgp::parse::{Parse};
+use openpgp::parse::Parse;
 
 use openpgp::serialize::stream::{Armorer, Message, Signer};
 
@@ -26,7 +26,6 @@ use std::io::Write;
 use std::os::unix::io::FromRawFd;
 
 use std::time::SystemTime;
-
 
 /// resign
 #[derive(Parser, Debug)]

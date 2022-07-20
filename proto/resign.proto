@@ -28,3 +28,32 @@ service SshAgent {
   // https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent#section-4.5
   rpc Sign (SignRequest) returns (SignResponse);
 }
+
+message PublicResponse {
+  bytes key = 1;
+}
+
+enum HashAlgorithm {
+  MD5 = 0;
+  SHA1 = 1;
+  RipeMD = 2;
+  SHA256 = 3;
+  SHA384 = 4;
+  SHA512 = 5;
+  SHA224 = 6;
+}
+
+message SqSignRequest {
+  HashAlgorithm hash_algo = 1;
+  bytes digest            = 2;
+}
+
+message AcceptableHashesResponse {
+  repeated HashAlgorithm hash_algos = 1;
+}
+
+service Signer {
+  rpc Public(google.protobuf.Empty) returns (PublicResponse);
+  rpc Sign(SqSignRequest) returns (google.protobuf.Empty);
+  rpc AcceptableHashes(google.protobuf.Empty) returns (AcceptableHashesResponse);
+}
