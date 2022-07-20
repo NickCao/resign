@@ -1,8 +1,10 @@
+use pinentry::PassphraseInput;
+use secrecy::ExposeSecret;
+use secrecy::SecretString;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 use openpgp_card::algorithm::{Algo, Curve};
-
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
 
@@ -57,6 +59,15 @@ impl SshAgentImpl {
         }
         Ok(())
     }
+    fn request_pin(&self, ident: &str) -> anyhow::Result<SecretString> {
+        let mut input = PassphraseInput::with_default_binary().unwrap();
+        let pin = input
+            .with_description(&format!("Please unlock the card: {}", ident))
+            .with_prompt("PIN")
+            .interact()
+            .unwrap();
+        Ok(pin)
+    }
 }
 
 #[tonic::async_trait]
@@ -80,8 +91,25 @@ impl SshAgent for SshAgentImpl {
         let response = IdentitiesResponse { identities };
         Ok(Response::new(response))
     }
-    async fn sign(&self, _request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
-        Err(Status::unimplemented(""))
+    async fn sign(&self, request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
+        let request = request.into_inner();
+        assert!(request.flags == 0);
+        let inner = self.inner.lock().unwrap();
+        let ident = inner
+            .cards
+            .iter()
+            .find(|(_k, v)| v.key_blob == request.key_blob)
+            .unwrap()
+            .0;
+        let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(ident, None).unwrap();
+        let mut card = openpgp_card::OpenPgp::new(&mut card);
+        let mut tx = card.transaction().unwrap();
+        let pin = self.request_pin(ident).unwrap();
+        tx.verify_pw1_user(pin.expose_secret().as_bytes()).unwrap();
+        use openpgp_card::crypto_data::Hash;
+        let hash = Hash::EdDSA(&request.data);
+        let sig = tx.authenticate_for_hash(hash).unwrap();
+        Ok(Response::new(SignResponse { signature: sig }))
     }
 }
 
