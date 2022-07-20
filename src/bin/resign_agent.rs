@@ -1,4 +1,8 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use openpgp_card::algorithm::{Algo, Curve};
+
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
 
@@ -10,30 +14,29 @@ pub mod rpc {
     tonic::include_proto!("resign");
 }
 
-#[derive(Default)]
-pub struct SshAgentImpl {}
+struct Card {
+    key_blob: Vec<u8>,
+}
 
-#[tonic::async_trait]
-impl SshAgent for SshAgentImpl {
-    async fn identities(
-        &self,
-        _request: tonic::Request<()>,
-    ) -> Result<Response<IdentitiesResponse>, Status> {
-        let cards = openpgp_card_pcsc::PcscBackend::cards(None)
-            .map_err(|e| Status::unavailable(e.to_string()))?;
-        let mut response = IdentitiesResponse::default();
+#[derive(Default)]
+struct SshAgentInner {
+    cards: HashMap<String, Card>,
+}
+
+#[derive(Default)]
+pub struct SshAgentImpl {
+    inner: Mutex<SshAgentInner>,
+}
+
+impl SshAgentImpl {
+    fn refresh_cards(&self) -> anyhow::Result<()> {
+        let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
         for mut card in cards {
             let mut card = openpgp_card::OpenPgp::new(&mut card);
-            let mut card_tx = card.transaction().unwrap();
-            let comment = card_tx
-                .application_related_data()
-                .unwrap()
-                .application_id()
-                .unwrap()
-                .ident()
-                .into_bytes();
-            let pub_key = card_tx.public_key(KeyType::Authentication).unwrap();
-            let key_blob = match pub_key {
+            let mut tx = card.transaction()?;
+            let aid = tx.application_related_data()?.application_id()?.ident();
+            let auth_key = tx.public_key(KeyType::Authentication)?;
+            let key_blob = match auth_key {
                 PublicKeyMaterial::E(ecc) => match ecc.algo() {
                     Algo::Ecc(attrs) => match attrs.curve() {
                         Curve::Ed25519 => {
@@ -43,24 +46,38 @@ impl SshAgent for SshAgentImpl {
                             blob.extend(ecc.data().to_vec());
                             blob
                         }
-                        c => {
-                            return Err(Status::unimplemented(format!(
-                                "unsupported ecc curve {:?}",
-                                c
-                            )))
-                        }
+                        _c => unimplemented!(),
                     },
-                    c => {
-                        return Err(Status::unimplemented(format!(
-                            "unsupported key type: {}",
-                            c
-                        )))
-                    }
+                    _c => unimplemented!(),
                 },
-                _ => panic!("Unsupported key type"),
+                _ => unimplemented!(),
             };
-            response.identities.push(Identity { key_blob, comment });
+            let mut inner = self.inner.lock().unwrap();
+            inner.cards.insert(aid, Card { key_blob });
         }
+        Ok(())
+    }
+}
+
+#[tonic::async_trait]
+impl SshAgent for SshAgentImpl {
+    async fn identities(
+        &self,
+        _request: tonic::Request<()>,
+    ) -> Result<Response<IdentitiesResponse>, Status> {
+        self.refresh_cards().unwrap();
+        let identities = self
+            .inner
+            .lock()
+            .unwrap()
+            .cards
+            .iter()
+            .map(|(k, v)| Identity {
+                comment: k.clone().into_bytes(),
+                key_blob: v.key_blob.clone(),
+            })
+            .collect();
+        let response = IdentitiesResponse { identities };
         Ok(Response::new(response))
     }
     async fn sign(&self, _request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
