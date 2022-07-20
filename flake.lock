@@ -15,28 +15,13 @@
         "type": "github"
       }
     },
-    "flake-utils_2": {
-      "locked": {
-        "lastModified": 1656928814,
-        "narHash": "sha256-RIFfgBuKz6Hp89yRr7+NR5tzIAbn52h8vT6vXkYjZoM=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "7e2a3b3dfd9af950a856d66b0a7d01e3c18aa249",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1658017223,
-        "narHash": "sha256-mVtJv3x9/yUb8mCK1jkh+k1p4LYLx9GDpk8MMd3pUJM=",
+        "lastModified": 1658249268,
+        "narHash": "sha256-DFpoFRZz35CbK5LDBbreybY9u3vHjfgcrpvMlPHIC24=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "57bfdfae1747fa296400ab0558eb9f8ab5916118",
+        "rev": "2543ab976c892bbdc5afe5bc05fbdbdce264803d",
         "type": "github"
       },
       "original": {
@@ -46,52 +31,10 @@
         "type": "github"
       }
     },
-    "nocargo": {
-      "inputs": {
-        "flake-utils": "flake-utils_2",
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "registry-crates-io": [
-          "registry-crates-io"
-        ]
-      },
-      "locked": {
-        "lastModified": 1658025148,
-        "narHash": "sha256-xbAGMNTu/z9Ttou2n9sOgOZbe2sW0/SqNPv5RPPSaXQ=",
-        "owner": "oxalica",
-        "repo": "nocargo",
-        "rev": "95ed36b60a5071bdffab5ac3e8254e853230778f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "nocargo",
-        "type": "github"
-      }
-    },
-    "registry-crates-io": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1658060180,
-        "narHash": "sha256-1d1MELQa+aeMIKFt8rnHiJQr+bm/UFrSeE3Hx4vZMzk=",
-        "owner": "rust-lang",
-        "repo": "crates.io-index",
-        "rev": "d938934e40b99fc23f4375a91ad4e56739522d43",
-        "type": "github"
-      },
-      "original": {
-        "owner": "rust-lang",
-        "repo": "crates.io-index",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
-        "nocargo": "nocargo",
-        "registry-crates-io": "registry-crates-io"
+        "nixpkgs": "nixpkgs"
       }
     }
   },
