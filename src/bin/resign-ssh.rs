@@ -1,96 +1,71 @@
 use anyhow::{anyhow, Result};
-use clap::Parser;
 use libsystemd::activation::IsType;
 
-
-
-use openpgp::serialize::MarshalInto;
-
-use openpgp_card::algorithm::{Algo, Curve};
-use openpgp_card::crypto_data::PublicKeyMaterial;
-use openpgp_card::KeyType;
-use pinentry::PassphraseInput;
-use secrecy::ExposeSecret;
-use sequoia_openpgp as openpgp;
+use rpc::SignRequest;
 use service_binding::Binding;
 use service_binding::Listener;
-use sha2::{Digest};
 use ssh_agent_lib::agent::Agent;
 use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::{message::Identity, Message};
 use std::net::TcpListener;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::os::unix::net::UnixListener;
+use tokio::runtime::Runtime;
+use tonic::Request;
 
-struct Backend {}
+use rpc::ssh_agent_client::SshAgentClient;
+
+pub mod rpc {
+    tonic::include_proto!("resign");
+}
+
+struct Backend {
+    rt: Runtime,
+}
 
 impl Agent for Backend {
     type Error = BackendError;
     fn handle(&self, request: Message) -> Result<Message, Self::Error> {
         match request {
             Message::RequestIdentities => {
-                for mut pcsc in openpgp_card_pcsc::PcscBackend::cards(None).unwrap_or_default() {
-                    let mut card = openpgp_card::OpenPgp::new(&mut pcsc);
-                    let mut card_tx = card.transaction().unwrap();
-                    let ard = card_tx.application_related_data().unwrap();
-                    let pub_key = card_tx.public_key(KeyType::Authentication).unwrap();
-                    let data = match pub_key {
-                        PublicKeyMaterial::E(ref ecc) => {
-                            if let Algo::Ecc(ecc_attrs) = ecc.algo() {
-                                match ecc_attrs.curve() {
-                                    Curve::Ed25519 => ecc.data().to_vec(),
-                                    c => panic!("Unsupported ECC Curve {:?}", c),
-                                }
-                            } else {
-                                panic!("This should never happen");
-                            }
-                        }
-                        _ => panic!("Unsupported key type"),
-                    };
-                    let mut pubkey_blob = vec![0, 0, 0, 0xb];
-                    pubkey_blob.extend("ssh-ed25519".as_bytes());
-                    pubkey_blob.extend(vec![0, 0, 0, 0x20]);
-                    pubkey_blob.extend(data);
-                    return Ok(Message::IdentitiesAnswer(vec![Identity {
-                        pubkey_blob,
-                        comment: ard.application_id().unwrap().ident(),
-                    }]));
-                }
-                Ok(Message::Failure)
+                let identities = self.rt.block_on(async {
+                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051").await.unwrap();
+                    client.identities(Request::new(())).await.unwrap()
+                });
+                Ok(Message::IdentitiesAnswer(
+                    identities
+                        .into_inner()
+                        .identities
+                        .iter()
+                        .map(|v| Identity {
+                            comment: String::from_utf8(v.comment.clone()).unwrap(),
+                            pubkey_blob: v.key_blob.clone(),
+                        })
+                        .collect(),
+                ))
             }
             Message::SignRequest(request) => {
-                assert!(request.flags == 0);
-                let body = request.data;
-                let mut pcsc = openpgp_card_pcsc::PcscBackend::cards(None)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .next()
-                    .unwrap();
-                let mut card = openpgp_card::OpenPgp::new(&mut pcsc);
-                let mut card_tx = card.transaction().unwrap();
-
-                let mut input = PassphraseInput::with_default_binary().unwrap();
-                let pin = input
-                    .with_description("enter pin for card")
-                    .with_prompt("pin:")
-                    .interact()
-                    .unwrap();
-                card_tx
-                    .verify_pw1_user(pin.expose_secret().as_bytes())
-                    .unwrap();
-                use openpgp_card::crypto_data::Hash;
-                let hash = Hash::EdDSA(&body);
-                let sig = card_tx.authenticate_for_hash(hash).unwrap();
+                let signature = self.rt.block_on(async {
+                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051").await.unwrap();
+                    client
+                        .sign(Request::new(SignRequest {
+                            key_blob: request.pubkey_blob,
+                            flags: request.flags,
+                            data: request.data,
+                        }))
+                        .await
+                        .unwrap()
+                });
                 Ok(Message::SignResponse(
                     (ssh_agent_lib::proto::signature::Signature {
                         algorithm: "ssh-ed25519".to_string(),
-                        blob: sig,
+                        blob: signature.into_inner().signature,
                     })
                     .to_blob()
                     .unwrap(),
                 ))
             }
-            _ => Ok(Message::ExtensionFailure),
+            _ => Ok(Message::Failure),
         }
     }
 }
@@ -101,7 +76,12 @@ pub enum BackendError {
 }
 
 fn main() -> Result<()> {
-    let agent = Backend {};
+    let agent = Backend {
+        rt: tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap(),
+    };
     let binding: Listener = if let Ok(fds) = libsystemd::activation::receive_descriptors(false) {
         if fds.len() != 1 {
             return Err(anyhow!("exactly one file descriptor should be passed"));
