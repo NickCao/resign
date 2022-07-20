@@ -8,7 +8,7 @@
       let pkgs = import nixpkgs { inherit system; }; in
       with pkgs; rec {
         devShell = mkShell {
-          nativeBuildInputs = [ rust-analyzer ];
+          nativeBuildInputs = [ rust-analyzer rustfmt clippy ];
           inputsFrom = [ packages.default ];
         };
         packages = {

@@ -5,10 +5,10 @@ use openpgp::armor;
 use openpgp::packet::key::Key4;
 use openpgp::packet::Key;
 use openpgp::packet::Signature;
-use openpgp::parse::{PacketPileParser, Parse};
-use openpgp::policy::StandardPolicy;
+use openpgp::parse::{Parse};
+
 use openpgp::serialize::stream::{Armorer, Message, Signer};
-use openpgp::Cert;
+
 use openpgp::Packet;
 use openpgp::PacketPile;
 use openpgp_card::algorithm::Algo;
@@ -24,9 +24,9 @@ use sequoia_openpgp as openpgp;
 use std::fs::File;
 use std::io::Write;
 use std::os::unix::io::FromRawFd;
-use std::time::Duration;
+
 use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
+
 
 /// resign
 #[derive(Parser, Debug)]

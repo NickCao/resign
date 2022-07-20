@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use libsystemd::activation::IsType;
-use openpgp::packet::Key;
-use openpgp::parse::Parse;
-use openpgp::policy::StandardPolicy;
+
+
+
 use openpgp::serialize::MarshalInto;
-use openpgp::Cert;
+
 use openpgp_card::algorithm::{Algo, Curve};
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
@@ -14,7 +14,7 @@ use secrecy::ExposeSecret;
 use sequoia_openpgp as openpgp;
 use service_binding::Binding;
 use service_binding::Listener;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest};
 use ssh_agent_lib::agent::Agent;
 use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::{message::Identity, Message};
@@ -36,14 +36,14 @@ impl Agent for Backend {
                     let pub_key = card_tx.public_key(KeyType::Authentication).unwrap();
                     let data = match pub_key {
                         PublicKeyMaterial::E(ref ecc) => {
-                            (if let Algo::Ecc(ecc_attrs) = ecc.algo() {
+                            if let Algo::Ecc(ecc_attrs) = ecc.algo() {
                                 match ecc_attrs.curve() {
                                     Curve::Ed25519 => ecc.data().to_vec(),
                                     c => panic!("Unsupported ECC Curve {:?}", c),
                                 }
                             } else {
                                 panic!("This should never happen");
-                            })
+                            }
                         }
                         _ => panic!("Unsupported key type"),
                     };
@@ -106,7 +106,7 @@ fn main() -> Result<()> {
         if fds.len() != 1 {
             return Err(anyhow!("exactly one file descriptor should be passed"));
         }
-        let fd = fds.iter().next().unwrap();
+        let fd = fds.get(0).unwrap();
         unsafe {
             if fd.is_unix() {
                 Listener::Unix(UnixListener::from_raw_fd(fd.clone().into_raw_fd()))

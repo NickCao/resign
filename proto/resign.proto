@@ -4,8 +4,8 @@ package resign;
 import "google/protobuf/empty.proto";
 
 message Identity {
-  string key_blob = 1;
-  string comment  = 2;
+  bytes key_blob = 1;
+  bytes comment  = 2;
 }
 
 message IdentitiesResponse {
@@ -13,13 +13,13 @@ message IdentitiesResponse {
 }
 
 message SignRequest {
-  string key_blob = 1;
-  string data     = 2;
-  uint32 flags    = 3;
+  bytes key_blob = 1;
+  bytes data     = 2;
+  uint32 flags   = 3;
 }
 
 message SignResponse {
-  string signature = 1;
+  bytes signature = 1;
 }
 
 service SshAgent {
