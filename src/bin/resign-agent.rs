@@ -5,6 +5,7 @@ use secrecy::SecretString;
 use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::Signature;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use openpgp_card::algorithm::{Algo, Curve};
@@ -19,19 +20,24 @@ pub mod rpc {
     tonic::include_proto!("resign");
 }
 
+pub mod sequoia {
+    tonic::include_proto!("sequoia");
+}
+
+#[derive(Clone)]
 struct Card {
     key_blob: Vec<u8>,
     pin: Option<SecretString>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct SshAgentInner {
     cards: HashMap<String, Card>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SshAgentImpl {
-    inner: Mutex<SshAgentInner>,
+    inner: Arc<Mutex<SshAgentInner>>,
 }
 
 impl SshAgentImpl {
@@ -94,6 +100,28 @@ impl SshAgentImpl {
         if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(ident) {
             card.pin = None;
         }
+    }
+}
+
+#[tonic::async_trait]
+impl sequoia::signer_server::Signer for SshAgentImpl {
+    async fn public(
+        &self,
+        _request: tonic::Request<()>,
+    ) -> Result<Response<sequoia::PublicResponse>, Status> {
+        Err(Status::unimplemented(""))
+    }
+    async fn sign(
+        &self,
+        _request: tonic::Request<sequoia::SignRequest>,
+    ) -> Result<Response<sequoia::SignResponse>, Status> {
+        Err(Status::unimplemented(""))
+    }
+    async fn acceptable_hashes(
+        &self,
+        _request: tonic::Request<()>,
+    ) -> Result<Response<sequoia::AcceptableHashesResponse>, Status> {
+        Err(Status::unimplemented("all hashes are accepted"))
     }
 }
 
@@ -165,7 +193,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "127.0.0.1:50051".parse()?;
     let ssh_agent = SshAgentImpl::default();
     Server::builder()
-        .add_service(SshAgentServer::new(ssh_agent))
+        .add_service(SshAgentServer::new(ssh_agent.clone()))
+        .add_service(sequoia::signer_server::SignerServer::new(ssh_agent.clone()))
         .serve(addr)
         .await?;
     Ok(())
