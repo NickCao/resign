@@ -1,6 +1,8 @@
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
+use ssh_agent_lib::proto::Blob;
+use ssh_agent_lib::proto::Signature;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -109,7 +111,13 @@ impl SshAgent for SshAgentImpl {
         use openpgp_card::crypto_data::Hash;
         let hash = Hash::EdDSA(&request.data);
         let sig = tx.authenticate_for_hash(hash).unwrap();
-        Ok(Response::new(SignResponse { signature: sig }))
+        let signature = Signature {
+            algorithm: "ssh-ed25519".to_string(),
+            blob: sig,
+        }
+        .to_blob()
+        .unwrap();
+        Ok(Response::new(SignResponse { signature }))
     }
 }
 

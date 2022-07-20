@@ -5,7 +5,6 @@ use rpc::SignRequest;
 use service_binding::Binding;
 use service_binding::Listener;
 use ssh_agent_lib::agent::Agent;
-use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::{message::Identity, Message};
 use std::net::TcpListener;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
@@ -29,7 +28,9 @@ impl Agent for Backend {
         match request {
             Message::RequestIdentities => {
                 let identities = self.rt.block_on(async {
-                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051").await.unwrap();
+                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051")
+                        .await
+                        .unwrap();
                     client.identities(Request::new(())).await.unwrap()
                 });
                 Ok(Message::IdentitiesAnswer(
@@ -46,7 +47,9 @@ impl Agent for Backend {
             }
             Message::SignRequest(request) => {
                 let signature = self.rt.block_on(async {
-                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051").await.unwrap();
+                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051")
+                        .await
+                        .unwrap();
                     client
                         .sign(Request::new(SignRequest {
                             key_blob: request.pubkey_blob,
@@ -56,14 +59,7 @@ impl Agent for Backend {
                         .await
                         .unwrap()
                 });
-                Ok(Message::SignResponse(
-                    (ssh_agent_lib::proto::signature::Signature {
-                        algorithm: "ssh-ed25519".to_string(),
-                        blob: signature.into_inner().signature,
-                    })
-                    .to_blob()
-                    .unwrap(),
-                ))
+                Ok(Message::SignResponse(signature.into_inner().signature))
             }
             _ => Ok(Message::Failure),
         }
