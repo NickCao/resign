@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -62,12 +63,13 @@ impl SshAgentImpl {
         Ok(())
     }
     fn request_pin(&self, ident: &str) -> anyhow::Result<SecretString> {
-        let mut input = PassphraseInput::with_default_binary().unwrap();
+        let mut input =
+            PassphraseInput::with_default_binary().ok_or(anyhow!("pinentry binary not found"))?;
         let pin = input
             .with_description(&format!("Please unlock the card: {}", ident))
             .with_prompt("PIN")
             .interact()
-            .unwrap();
+            .map_err(|e| anyhow!("failed to get pin: {}", e))?;
         Ok(pin)
     }
 }
@@ -78,7 +80,8 @@ impl SshAgent for SshAgentImpl {
         &self,
         _request: tonic::Request<()>,
     ) -> Result<Response<IdentitiesResponse>, Status> {
-        self.refresh_cards().unwrap();
+        self.refresh_cards()
+            .map_err(|e| Status::unavailable(e.to_string()))?;
         let identities = self
             .inner
             .lock()
@@ -101,22 +104,30 @@ impl SshAgent for SshAgentImpl {
             .cards
             .iter()
             .find(|(_k, v)| v.key_blob == request.key_blob)
-            .unwrap()
+            .ok_or(Status::unavailable("no card with matching key found"))?
             .0;
-        let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(ident, None).unwrap();
+        let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(ident, None)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
-        let mut tx = card.transaction().unwrap();
-        let pin = self.request_pin(ident).unwrap();
-        tx.verify_pw1_user(pin.expose_secret().as_bytes()).unwrap();
+        let mut tx = card
+            .transaction()
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+        let pin = self
+            .request_pin(ident)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+        tx.verify_pw1_user(pin.expose_secret().as_bytes())
+            .map_err(|e| Status::unavailable(e.to_string()))?;
         use openpgp_card::crypto_data::Hash;
         let hash = Hash::EdDSA(&request.data);
-        let sig = tx.authenticate_for_hash(hash).unwrap();
+        let sig = tx
+            .authenticate_for_hash(hash)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
         let signature = Signature {
             algorithm: "ssh-ed25519".to_string(),
             blob: sig,
         }
         .to_blob()
-        .unwrap();
+        .map_err(|e| Status::unavailable(e.to_string()))?;
         Ok(Response::new(SignResponse { signature }))
     }
 }
