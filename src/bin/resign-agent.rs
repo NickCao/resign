@@ -21,6 +21,7 @@ pub mod rpc {
 
 struct Card {
     key_blob: Vec<u8>,
+    pin: Option<SecretString>,
 }
 
 #[derive(Default)]
@@ -58,11 +59,25 @@ impl SshAgentImpl {
                 _ => unimplemented!(),
             };
             let mut inner = self.inner.lock().unwrap();
-            inner.cards.insert(aid, Card { key_blob });
+            let old = inner.cards.insert(
+                aid.clone(),
+                Card {
+                    key_blob,
+                    pin: None,
+                },
+            );
+            if let Some(old) = old {
+                if let Some(mut oldc) = inner.cards.get_mut(&aid) {
+                    oldc.pin = old.pin;
+                }
+            };
         }
         Ok(())
     }
     fn request_pin(&self, ident: &str) -> anyhow::Result<SecretString> {
+        if let Some(Card { pin: Some(pin), .. }) = self.inner.lock().unwrap().cards.get(ident) {
+            return Ok(pin.clone());
+        }
         let mut input =
             PassphraseInput::with_default_binary().ok_or(anyhow!("pinentry binary not found"))?;
         let pin = input
@@ -70,7 +85,15 @@ impl SshAgentImpl {
             .with_prompt("PIN")
             .interact()
             .map_err(|e| anyhow!("failed to get pin: {}", e))?;
+        if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(ident) {
+            card.pin = Some(pin.clone());
+        }
         Ok(pin)
+    }
+    fn forget_pin(&self, ident: &str) {
+        if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(ident) {
+            card.pin = None;
+        }
     }
 }
 
@@ -105,18 +128,23 @@ impl SshAgent for SshAgentImpl {
             .iter()
             .find(|(_k, v)| v.key_blob == request.key_blob)
             .ok_or(Status::unavailable("no card with matching key found"))?
-            .0;
-        let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(ident, None)
+            .0
+            .clone();
+        drop(inner);
+        let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(&ident, None)
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
         let mut tx = card
             .transaction()
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let pin = self
-            .request_pin(ident)
+            .request_pin(&ident)
             .map_err(|e| Status::unavailable(e.to_string()))?;
         tx.verify_pw1_user(pin.expose_secret().as_bytes())
-            .map_err(|e| Status::unavailable(e.to_string()))?;
+            .map_err(|e| {
+                self.forget_pin(&ident);
+                Status::unavailable(e.to_string())
+            })?;
         use openpgp_card::crypto_data::Hash;
         let hash = Hash::EdDSA(&request.data);
         let sig = tx
