@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use chrono::prelude::*;
 use clap::Parser;
 use openpgp::armor;
-use openpgp::packet::key::Key4;
+
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::Key;
@@ -13,25 +13,25 @@ use openpgp::serialize::stream::{Armorer, Message, Signer};
 
 use openpgp::Packet;
 use openpgp::PacketPile;
-use openpgp_card::algorithm::Algo;
-use openpgp_card::algorithm::Curve;
-use openpgp_card::crypto_data::PublicKeyMaterial;
-use openpgp_card::KeyType;
-use openpgp_card::OpenPgp;
-use openpgp_card_pcsc::PcscBackend;
-use openpgp_card_sequoia::card::Open;
-use pinentry::PassphraseInput;
+
+
+
+
+
+
+
+
 use rpc::SignRequest;
-use secrecy::ExposeSecret;
+
 use sequoia_openpgp as openpgp;
 use std::fs::File;
 use std::io::Write;
 use std::os::unix::io::FromRawFd;
 use tokio::runtime::Handle;
-use tokio::runtime::Runtime;
+
 use tonic::transport::Channel;
 
-use std::time::SystemTime;
+
 
 use rpc::signer_client::SignerClient;
 

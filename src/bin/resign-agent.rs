@@ -8,10 +8,10 @@ use openpgp::packet::Packet;
 use openpgp::serialize::Marshal;
 use openpgp::serialize::MarshalInto;
 use openpgp::types::HashAlgorithm;
-use openpgp_card::OpenPgp;
+
 use openpgp_card::OpenPgpTransaction;
 use openpgp_card_sequoia::card::Open;
-use pinentry::Error;
+
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -173,9 +173,9 @@ impl SshAgentImpl {
             .signing_card()
             .ok_or(anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer_from_pubkey(key, touch_prompt);
-        Ok(signer
+        signer
             .sign(hash_algo, digest)
-            .map_err(|e| anyhow!("signing failed: {}", e))?)
+            .map_err(|e| anyhow!("signing failed: {}", e))
     }
 }
 
