@@ -1,6 +1,8 @@
 use anyhow::anyhow;
+use openpgp::serialize::Marshal;
 use openpgp::crypto::Signer as SequoiaSigner;
 use openpgp::packet::key::Key4;
+use openpgp::packet::Packet;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::Key;
@@ -163,6 +165,7 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
         &self,
         _request: tonic::Request<()>,
     ) -> Result<Response<sequoia::PublicResponse>, Status> {
+        self.refresh_cards().unwrap();
         let inner = self.inner.lock().unwrap();
         let ident = inner
             .cards
@@ -176,14 +179,17 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
         let key = Self::public(&mut card).map_err(|e| Status::unavailable(e.to_string()))?;
+        let mut bytes = vec![];
+        Packet::from(key.role_as_primary().clone()).serialize(&mut bytes);
         Ok(Response::new(PublicResponse {
-            key: key.to_vec().unwrap(),
+            key: bytes,
         }))
     }
     async fn sign(
         &self,
         request: tonic::Request<sequoia::SignRequest>,
     ) -> Result<Response<sequoia::SignResponse>, Status> {
+        self.refresh_cards().unwrap();
         let request = request.into_inner();
         let inner = self.inner.lock().unwrap();
         let ident = inner
@@ -197,15 +203,7 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
         let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(&ident, None)
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
-        let hash_algo = match request.hash_algo() {
-            sequoia::HashAlgorithm::Md5 => openpgp::types::HashAlgorithm::MD5,
-            sequoia::HashAlgorithm::Sha1 => openpgp::types::HashAlgorithm::SHA1,
-            sequoia::HashAlgorithm::RipeMd => openpgp::types::HashAlgorithm::RipeMD,
-            sequoia::HashAlgorithm::Sha224 => openpgp::types::HashAlgorithm::SHA224,
-            sequoia::HashAlgorithm::Sha256 => openpgp::types::HashAlgorithm::SHA256,
-            sequoia::HashAlgorithm::Sha384 => openpgp::types::HashAlgorithm::SHA384,
-            sequoia::HashAlgorithm::Sha512 => openpgp::types::HashAlgorithm::SHA512,
-        };
+        let hash_algo = (request.hash_algo as u8).into();
         let pin = self
             .request_pin(&ident)
             .map_err(|e| Status::unavailable(e.to_string()))?;

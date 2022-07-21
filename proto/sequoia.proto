@@ -8,19 +8,9 @@ message PublicResponse {
   bytes key = 1;
 }
 
-enum HashAlgorithm {
-  MD5    = 0;
-  SHA1   = 1;
-  RipeMD = 2;
-  SHA256 = 3;
-  SHA384 = 4;
-  SHA512 = 5;
-  SHA224 = 6;
-}
-
 message SignRequest {
-  HashAlgorithm hash_algo = 1;
-  bytes digest            = 2;
+  uint32 hash_algo = 1;
+  bytes digest     = 2;
 }
 
 message SignResponse {
@@ -28,7 +18,7 @@ message SignResponse {
 }
 
 message AcceptableHashesResponse {
-  repeated HashAlgorithm hash_algos = 1;
+  repeated uint32 hash_algos = 1;
 }
 
 service Signer {
