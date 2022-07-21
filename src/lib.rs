@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
+use ssh_agent_lib::proto::Blob;
 use std::time::SystemTime;
 
 use openpgp::crypto::Signer as SequoiaSigner;
@@ -26,10 +27,7 @@ pub struct Backend {
 impl Backend {
     pub fn open(&mut self) -> anyhow::Result<PcscBackend> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        cards
-            .into_iter()
-            .next()
-            .ok_or(anyhow!("no card available"))
+        cards.into_iter().next().ok_or(anyhow!("no card available"))
     }
 
     pub fn public(
@@ -58,6 +56,28 @@ impl Backend {
         Ok(key)
     }
 
+    pub fn public_ssh(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        let ident = tx.application_related_data()?.application_id()?.ident();
+        let key = tx.public_key(KeyType::Authentication)?;
+        let key_blob = match key {
+            PublicKeyMaterial::E(ecc) => match ecc.algo() {
+                Algo::Ecc(attrs) => match attrs.curve() {
+                    Curve::Ed25519 => {
+                        let mut blob = vec![0, 0, 0, 0xb];
+                        blob.extend(b"ssh-ed25519");
+                        blob.extend(vec![0, 0, 0, 0x20]);
+                        blob.extend(ecc.data().to_vec());
+                        blob
+                    }
+                    _ => unimplemented!(),
+                },
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!(),
+        };
+        Ok((key_blob, ident.as_bytes().to_vec()))
+    }
+
     pub fn sign<'a>(
         &mut self,
         tx: OpenPgpTransaction,
@@ -73,6 +93,17 @@ impl Backend {
             .ok_or(anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer_from_pubkey(key, touch_prompt);
         signer.sign(hash_algo, digest)
+    }
+
+    pub fn auth_ssh(&mut self, tx: OpenPgpTransaction, data: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let hash = openpgp_card::crypto_data::Hash::EdDSA(data);
+        let mut tx = self.verify_user(tx, false)?;
+        let blob = tx.authenticate_for_hash(hash)?;
+        Ok(ssh_agent_lib::proto::Signature {
+            algorithm: "ssh-ed25519".to_string(),
+            blob,
+        }
+        .to_blob()?)
     }
 
     fn verify_user<'a>(

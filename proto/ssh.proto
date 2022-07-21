@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-package resign;
+package ssh;
+
 import "google/protobuf/empty.proto";
 
 message Identity {
@@ -22,7 +23,7 @@ message SignResponse {
   bytes signature = 1;
 }
 
-service SshAgent {
+service Agent {
   // https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent#section-4.4
   rpc Identities (google.protobuf.Empty) returns (IdentitiesResponse);
   // https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent#section-4.5

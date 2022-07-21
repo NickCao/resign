@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use libsystemd::activation::IsType;
 
-use rpc::SignRequest;
+use ssh::SignRequest;
 use service_binding::Binding;
 use service_binding::Listener;
 use ssh_agent_lib::agent::Agent;
@@ -12,10 +12,10 @@ use std::os::unix::net::UnixListener;
 use tokio::runtime::Runtime;
 use tonic::Request;
 
-use rpc::ssh_agent_client::SshAgentClient;
+use ssh::agent_client::AgentClient;
 
-pub mod rpc {
-    tonic::include_proto!("resign");
+pub mod ssh {
+    tonic::include_proto!("ssh");
 }
 
 struct Backend {
@@ -28,7 +28,7 @@ impl Agent for Backend {
         match request {
             Message::RequestIdentities => {
                 let identities = self.rt.block_on(async {
-                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051")
+                    let mut client = AgentClient::connect("http://127.0.0.1:50051")
                         .await
                         .unwrap();
                     client.identities(Request::new(())).await.unwrap()
@@ -47,7 +47,7 @@ impl Agent for Backend {
             }
             Message::SignRequest(request) => {
                 let signature = self.rt.block_on(async {
-                    let mut client = SshAgentClient::connect("http://127.0.0.1:50051")
+                    let mut client = AgentClient::connect("http://127.0.0.1:50051")
                         .await
                         .unwrap();
                     client
