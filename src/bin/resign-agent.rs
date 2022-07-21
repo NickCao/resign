@@ -57,11 +57,11 @@ struct SshAgentInner {
 }
 
 #[derive(Default, Clone)]
-pub struct SshAgentImpl {
+pub struct Agent {
     inner: Arc<Mutex<SshAgentInner>>,
 }
 
-impl SshAgentImpl {
+impl Agent {
     fn refresh_cards(&self) -> anyhow::Result<()> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
         for mut card in cards {
@@ -185,7 +185,7 @@ impl SshAgentImpl {
 }
 
 #[tonic::async_trait]
-impl sequoia::signer_server::Signer for SshAgentImpl {
+impl sequoia::signer_server::Signer for Agent {
     async fn public(
         &self,
         _request: tonic::Request<()>,
@@ -256,7 +256,7 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
 }
 
 #[tonic::async_trait]
-impl SshAgent for SshAgentImpl {
+impl SshAgent for Agent {
     async fn identities(
         &self,
         _request: tonic::Request<()>,
@@ -314,7 +314,7 @@ impl SshAgent for SshAgentImpl {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "127.0.0.1:50051".parse()?;
-    let ssh_agent = SshAgentImpl::default();
+    let ssh_agent = Agent::default();
     Server::builder()
         .add_service(SshAgentServer::new(ssh_agent.clone()))
         .add_service(sequoia::signer_server::SignerServer::new(ssh_agent.clone()))
