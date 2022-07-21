@@ -26,10 +26,10 @@ pub struct Backend {
 impl Backend {
     pub fn open(&mut self) -> anyhow::Result<PcscBackend> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        Ok(cards
+        cards
             .into_iter()
             .next()
-            .ok_or(anyhow!("no card available"))?)
+            .ok_or(anyhow!("no card available"))
     }
 
     pub fn public(
@@ -72,7 +72,7 @@ impl Backend {
             .signing_card()
             .ok_or(anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer_from_pubkey(key, touch_prompt);
-        Ok(signer.sign(hash_algo, digest)?)
+        signer.sign(hash_algo, digest)
     }
 
     fn verify_user<'a>(
