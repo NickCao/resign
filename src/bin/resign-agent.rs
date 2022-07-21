@@ -1,42 +1,12 @@
-
-
-use openpgp::crypto::Signer as SequoiaSigner;
-
-
-
-
-use openpgp::packet::Packet;
-
-use openpgp::serialize::MarshalInto;
-
-use openpgp_card::OpenPgp;
-use sequoia_openpgp as openpgp;
-
-
-
-
-
-
-
-
-
-
-
-
-
-use sequoia::PublicResponse;
-
-
-
-
-
 use std::sync::Arc;
 use std::sync::Mutex;
-
-
-use rpc::ssh_agent_server::{SshAgent};
-
 use tonic::{transport::Server, Response, Status};
+
+use openpgp::packet::Packet;
+use openpgp::serialize::MarshalInto;
+use openpgp_card::OpenPgp;
+use sequoia::PublicResponse;
+use sequoia_openpgp as openpgp;
 
 pub mod rpc {
     tonic::include_proto!("resign");
