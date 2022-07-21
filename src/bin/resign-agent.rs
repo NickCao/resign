@@ -91,13 +91,17 @@ impl ssh::agent_server::Agent for Agent {
         &self,
         request: tonic::Request<ssh::SignRequest>,
     ) -> Result<Response<ssh::SignResponse>, Status> {
-        let request = request.into_inner();
-        let mut backend = self.backend.lock().unwrap();
-        let mut card = backend.open().unwrap();
-        let mut card = OpenPgp::new(&mut card);
-        let tx = card.transaction().unwrap();
-        let signature = backend.auth_ssh(tx, &request.data).unwrap();
-        Ok(Response::new(ssh::SignResponse { signature }))
+        let resp = || -> anyhow::Result<ssh::SignResponse> {
+            let request = request.into_inner();
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let signature = backend.auth_ssh(tx, &request.data)?;
+            Ok(ssh::SignResponse { signature })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
     }
 }
 
