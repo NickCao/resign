@@ -110,7 +110,15 @@ async fn main() -> anyhow::Result<()> {
     if args.sign {
         assert!(args.detach_sign);
         assert!(args.armor);
-        let remote = Remote::new(SignerClient::connect("http://127.0.0.1:50051").await?).await?;
+        assert!(args.local_user.is_some());
+
+        let channel = tonic::transport::Endpoint::try_from("http://localhost")?
+            .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
+                tokio::net::UnixStream::connect(args.local_user.clone().unwrap())
+            }))
+            .await?;
+        let client = SignerClient::new(channel);
+        let remote = Remote::new(client).await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
             let message = Message::new(std::io::stdout());
             let armored = Armorer::new(message).kind(armor::Kind::Signature).build()?;
