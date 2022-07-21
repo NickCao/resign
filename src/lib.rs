@@ -29,7 +29,7 @@ pub struct Backend {
 impl Backend {
     pub fn open(&mut self) -> anyhow::Result<PcscBackend> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        cards.into_iter().next().ok_or(anyhow!("no card available"))
+        cards.into_iter().next().ok_or_else(|| anyhow!("no card available"))
     }
 
     pub fn public(
@@ -40,7 +40,7 @@ impl Backend {
         let ctime = open.key_generation_times()?;
         let ctime: SystemTime = ctime
             .signature()
-            .ok_or(anyhow!("ctime for signature subkey ununavailable"))?
+            .ok_or_else(|| anyhow!("ctime for signature subkey ununavailable"))?
             .to_datetime()
             .into();
         let key = open.public_key(KeyType::Signing)?;
@@ -92,7 +92,7 @@ impl Backend {
         let mut open = Open::new(tx)?;
         let mut sign = open
             .signing_card()
-            .ok_or(anyhow!("failed to open signing card"))?;
+            .ok_or_else(|| anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer_from_pubkey(key, touch_prompt);
         signer.sign(hash_algo, digest)
     }
@@ -119,7 +119,7 @@ impl Backend {
             Some(pin) => pin.clone(),
             _ => {
                 let mut input = PassphraseInput::with_default_binary()
-                    .ok_or(anyhow!("pinentry binary not found"))?;
+                    .ok_or_else(|| anyhow!("pinentry binary not found"))?;
                 let pin = input
                     .with_description(&format!("Please unlock the card: {}", ident))
                     .with_prompt("PIN")
