@@ -27,34 +27,38 @@ impl sequoia::signer_server::Signer for Agent {
         &self,
         _request: tonic::Request<()>,
     ) -> Result<Response<sequoia::PublicResponse>, Status> {
-        let mut backend = self.backend.lock().unwrap();
-        let mut card = backend.open().unwrap();
-        let mut card = OpenPgp::new(&mut card);
-        let tx = card.transaction().unwrap();
-        let key = backend.public(tx).unwrap();
-        let key = Packet::from(key.role_as_primary().clone())
-            .to_vec()
-            .unwrap();
-        Ok(Response::new(PublicResponse { key }))
+        let resp = || -> anyhow::Result<sequoia::PublicResponse> {
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let key = backend.public(tx)?;
+            let key = Packet::from(key.role_as_primary().clone()).to_vec()?;
+            Ok(PublicResponse { key })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
     }
     async fn sign(
         &self,
         request: tonic::Request<sequoia::SignRequest>,
     ) -> Result<Response<sequoia::SignResponse>, Status> {
-        let request = request.into_inner();
-        let mut backend = self.backend.lock().unwrap();
-        let mut card = backend.open().unwrap();
-        let mut card = OpenPgp::new(&mut card);
-        let tx = card.transaction().unwrap();
-        let key = backend.public(tx).unwrap();
-        let tx = card.transaction().unwrap();
-        let hash_algo = request.hash_algo as u8;
-        let sig = backend
-            .sign(tx, key, hash_algo.into(), &request.digest, &|| {})
-            .unwrap();
-        Ok(Response::new(sequoia::SignResponse {
-            signature: sig.to_vec().unwrap(),
-        }))
+        let resp = || -> anyhow::Result<sequoia::SignResponse> {
+            let request = request.into_inner();
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let key = backend.public(tx)?;
+            let tx = card.transaction()?;
+            let hash_algo = request.hash_algo as u8;
+            let sig = backend.sign(tx, key, hash_algo.into(), &request.digest, &|| {})?;
+            Ok(sequoia::SignResponse {
+                signature: sig.to_vec()?,
+            })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
     }
     async fn acceptable_hashes(
         &self,
@@ -70,14 +74,18 @@ impl ssh::agent_server::Agent for Agent {
         &self,
         _request: tonic::Request<()>,
     ) -> Result<Response<ssh::IdentitiesResponse>, Status> {
-        let mut backend = self.backend.lock().unwrap();
-        let mut card = backend.open().unwrap();
-        let mut card = OpenPgp::new(&mut card);
-        let tx = card.transaction().unwrap();
-        let (key_blob, comment) = backend.public_ssh(tx).unwrap();
-        Ok(Response::new(ssh::IdentitiesResponse {
-            identities: vec![ssh::Identity { key_blob, comment }],
-        }))
+        let resp = || -> anyhow::Result<ssh::IdentitiesResponse> {
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let (key_blob, comment) = backend.public_ssh(tx)?;
+            Ok(ssh::IdentitiesResponse {
+                identities: vec![ssh::Identity { key_blob, comment }],
+            })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
     }
     async fn sign(
         &self,
