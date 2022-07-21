@@ -29,7 +29,10 @@ pub struct Backend {
 impl Backend {
     pub fn open(&mut self) -> anyhow::Result<PcscBackend> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        cards.into_iter().next().ok_or_else(|| anyhow!("no card available"))
+        cards
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("no card available"))
     }
 
     pub fn public(

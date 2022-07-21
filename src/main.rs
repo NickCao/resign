@@ -14,13 +14,6 @@ use openpgp::serialize::stream::{Armorer, Message, Signer};
 use openpgp::Packet;
 use openpgp::PacketPile;
 
-
-
-
-
-
-
-
 use rpc::SignRequest;
 
 use sequoia_openpgp as openpgp;
@@ -30,8 +23,6 @@ use std::os::unix::io::FromRawFd;
 use tokio::runtime::Handle;
 
 use tonic::transport::Channel;
-
-
 
 use rpc::signer_client::SignerClient;
 
@@ -138,7 +129,9 @@ async fn main() -> Result<()> {
             signer.finalize()?;
             status_fd.write(b"[GNUPG:] SIG_CREATED \n")?;
             Ok(())
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     } else if args.verify {
         if args.args.len() != 2 {
             return Err(anyhow!("unsupported number of arguments"));

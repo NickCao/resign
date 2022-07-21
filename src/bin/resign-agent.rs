@@ -1,6 +1,7 @@
-use service_binding::Binding;
-use ssh_agent_lib::Agent as SAgent;
-use std::sync::Mutex;
+use clap::Parser;
+use ssh_agent_lib::Agent as _;
+use tokio::net::UnixListener;
+use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::Channel;
 use tonic::transport::Endpoint;
 use tonic::{transport::Server, Request};
@@ -9,7 +10,7 @@ use resign::agent::ssh::agent_client::AgentClient;
 use resign::agent::Agent;
 
 struct SshAgent {
-    client: Mutex<AgentClient<Channel>>,
+    client: tokio::sync::Mutex<AgentClient<Channel>>,
 }
 
 impl ssh_agent_lib::Agent for SshAgent {
@@ -21,13 +22,8 @@ impl ssh_agent_lib::Agent for SshAgent {
         match request {
             ssh_agent_lib::proto::Message::RequestIdentities => {
                 let identities = futures::executor::block_on(async {
-                    self.client
-                        .lock()
-                        .unwrap()
-                        .identities(Request::new(()))
-                        .await
-                        .unwrap()
-                });
+                    self.client.lock().await.identities(Request::new(())).await
+                })?;
                 Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(
                     identities
                         .into_inner()
@@ -44,15 +40,14 @@ impl ssh_agent_lib::Agent for SshAgent {
                 let signature = futures::executor::block_on(async {
                     self.client
                         .lock()
-                        .unwrap()
+                        .await
                         .sign(Request::new(resign::agent::ssh::SignRequest {
                             key_blob: request.pubkey_blob,
                             flags: request.flags,
                             data: request.data,
                         }))
                         .await
-                        .unwrap()
-                });
+                })?;
                 Ok(ssh_agent_lib::proto::Message::SignResponse(
                     signature.into_inner().signature,
                 ))
@@ -62,56 +57,59 @@ impl ssh_agent_lib::Agent for SshAgent {
     }
 }
 
+/// resign-agent
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// grpc listen address
+    #[clap(long = "grpc")]
+    grpc: String,
+    /// ssh agent listen address
+    #[clap(long = "ssh")]
+    ssh: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "127.0.0.1:50051".parse()?;
+    use resign::agent::sequoia::signer_server::SignerServer;
+    use resign::agent::ssh::agent_client::AgentClient;
+    use resign::agent::ssh::agent_server::AgentServer;
+
+    let args = Args::parse();
     let agent = Agent::default();
-    let (client, server) = tokio::io::duplex(1024);
+
+    let (tx, rx) = tokio::io::duplex(1024);
     tokio::spawn(
         Server::builder()
-            .add_service(resign::agent::ssh::agent_server::AgentServer::new(
-                agent.clone(),
-            ))
-            .serve_with_incoming(futures::stream::iter(vec![Ok::<_, std::io::Error>(server)])),
-    );
-    tokio::spawn(
-        Server::builder()
-            .add_service(resign::agent::sequoia::signer_server::SignerServer::new(
-                agent.clone(),
-            ))
-            .serve(addr),
+            .add_service(AgentServer::new(agent.clone()))
+            .serve_with_incoming(futures::stream::iter(vec![Ok::<_, std::io::Error>(rx)])),
     );
 
-    let mut client = Some(client);
-    let channel = Endpoint::try_from("http://127.0.0.1:0")
-        .unwrap()
+    drop(std::fs::remove_file(&args.grpc));
+    let uds = UnixListener::bind(&args.grpc)?;
+    tokio::spawn(
+        Server::builder()
+            .add_service(AgentServer::new(agent.clone()))
+            .add_service(SignerServer::new(agent.clone()))
+            .serve_with_incoming(UnixListenerStream::new(uds)),
+    );
+
+    let mut tx = Some(tx);
+    let ch = Endpoint::try_from("http://localhost")?
         .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
-            let client = client.take();
+            let client = tx.take();
             async move {
-                if let Some(client) = client {
-                    Ok(client)
-                } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Client already taken",
-                    ))
-                }
+                client.ok_or(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Client already taken",
+                ))
             }
         }))
-        .await
-        .unwrap();
-    let client = resign::agent::ssh::agent_client::AgentClient::new(channel);
+        .await?;
     let agent = SshAgent {
-        client: Mutex::new(client),
+        client: tokio::sync::Mutex::new(AgentClient::new(ch)),
     };
-    agent
-        .listen(
-            "unix:///tmp/test"
-                .parse::<Binding>()
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        )
-        .unwrap();
+    drop(std::fs::remove_file(&args.ssh));
+    agent.run_unix(&args.ssh).map_err(|e| anyhow::anyhow!(e))?;
     Ok(())
 }

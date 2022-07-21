@@ -1709,6 +1709,7 @@ dependencies = [
  "sha2",
  "ssh-agent-lib",
  "tokio 1.20.0",
+ "tokio-stream",
  "tonic",
  "tonic-build",
  "tower",
