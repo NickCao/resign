@@ -138,6 +138,7 @@ impl SshAgentImpl {
     }
     fn sign<'a>(
         card: &mut OpenPgp,
+        pin: SecretString,
         hash_algo: HashAlgorithm,
         digest: &[u8],
         touch_prompt: &'a (dyn Fn() + Send + Sync),
@@ -145,6 +146,7 @@ impl SshAgentImpl {
         let key = Self::public(card)?;
         let tx = card.transaction()?;
         let mut open = Open::new(tx)?;
+        open.verify_user_for_signing(pin.expose_secret().as_bytes())?;
         let mut sign = open
             .signing_card()
             .ok_or(anyhow!("failed to open signing card"))?;
@@ -204,7 +206,10 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
             sequoia::HashAlgorithm::Sha384 => openpgp::types::HashAlgorithm::SHA384,
             sequoia::HashAlgorithm::Sha512 => openpgp::types::HashAlgorithm::SHA512,
         };
-        let sig = Self::sign(&mut card, hash_algo, &request.digest, &|| {})
+        let pin = self
+            .request_pin(&ident)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+        let sig = Self::sign(&mut card, pin, hash_algo, &request.digest, &|| {})
             .map_err(|e| Status::unavailable(e.to_string()))?;
         Ok(Response::new(sequoia::SignResponse {
             signature: sig.to_vec().unwrap(),
