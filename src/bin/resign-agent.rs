@@ -99,10 +99,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
             let client = tx.take();
             async move {
-                client.ok_or(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Client already taken",
-                ))
+                client.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "Client already taken")
+                })
             }
         }))
         .await?;

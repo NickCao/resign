@@ -67,7 +67,7 @@ struct Remote {
 impl Remote {
     async fn new(mut client: SignerClient<Channel>) -> anyhow::Result<Self> {
         let resp = client.public(()).await?.into_inner();
-        let packet = Packet::from_bytes(&resp.key).unwrap();
+        let packet = Packet::from_bytes(&resp.key)?;
         if let Packet::PublicKey(key) = packet {
             Ok(Self {
                 client,
@@ -90,10 +90,7 @@ impl openpgp::crypto::Signer for Remote {
             digest: digest.to_vec(),
         };
         let resp = Handle::current().block_on(self.client.sign(req));
-        openpgp::crypto::mpi::Signature::parse(
-            self.key.pk_algo(),
-            &*(resp.unwrap().into_inner().signature),
-        )
+        openpgp::crypto::mpi::Signature::parse(self.key.pk_algo(), &*(resp?.into_inner().signature))
     }
 
     fn public(
@@ -104,7 +101,7 @@ impl openpgp::crypto::Signer for Remote {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     assert!(args.status_fd.is_some());
@@ -113,13 +110,7 @@ async fn main() -> Result<()> {
     if args.sign {
         assert!(args.detach_sign);
         assert!(args.armor);
-        let remote = Remote::new(
-            SignerClient::connect("http://127.0.0.1:50051")
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let remote = Remote::new(SignerClient::connect("http://127.0.0.1:50051").await?).await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
             let message = Message::new(std::io::stdout());
             let armored = Armorer::new(message).kind(armor::Kind::Signature).build()?;
@@ -130,8 +121,7 @@ async fn main() -> Result<()> {
             status_fd.write(b"[GNUPG:] SIG_CREATED \n")?;
             Ok(())
         })
-        .await
-        .unwrap()
+        .await?
     } else if args.verify {
         if args.args.len() != 2 {
             return Err(anyhow!("unsupported number of arguments"));
@@ -143,7 +133,10 @@ async fn main() -> Result<()> {
                 status_fd.write(b"[GNUPG:] GOODSIG \n")?;
                 eprintln!(
                     "resign: Signature made {}",
-                    DateTime::<Utc>::from(sig.signature_creation_time().unwrap())
+                    DateTime::<Utc>::from(
+                        sig.signature_creation_time()
+                            .ok_or_else(|| anyhow!("ctime for signature ununavailable"))?
+                    )
                 );
                 for fp in sig.issuer_fingerprints() {
                     eprintln!(
