@@ -1,15 +1,17 @@
 use anyhow::anyhow;
-use openpgp::serialize::Marshal;
 use openpgp::crypto::Signer as SequoiaSigner;
 use openpgp::packet::key::Key4;
-use openpgp::packet::Packet;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::Key;
+use openpgp::packet::Packet;
+use openpgp::serialize::Marshal;
 use openpgp::serialize::MarshalInto;
 use openpgp::types::HashAlgorithm;
 use openpgp_card::OpenPgp;
+use openpgp_card::OpenPgpTransaction;
 use openpgp_card_sequoia::card::Open;
+use pinentry::Error;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -94,29 +96,48 @@ impl SshAgentImpl {
         }
         Ok(())
     }
-    fn request_pin(&self, ident: &str) -> anyhow::Result<SecretString> {
-        if let Some(Card { pin: Some(pin), .. }) = self.inner.lock().unwrap().cards.get(ident) {
-            return Ok(pin.clone());
+    fn verify_user<'a>(
+        &self,
+        mut tx: OpenPgpTransaction<'a>,
+        signing: bool,
+    ) -> anyhow::Result<OpenPgpTransaction<'a>> {
+        let ident = tx.application_related_data()?.application_id()?.ident();
+
+        let pin = match self.inner.lock().unwrap().cards.get(&ident) {
+            Some(Card { pin: Some(pin), .. }) => pin.clone(),
+            _ => {
+                let mut input = PassphraseInput::with_default_binary()
+                    .ok_or(anyhow!("pinentry binary not found"))?;
+                let pin = input
+                    .with_description(&format!("Please unlock the card: {}", ident))
+                    .with_prompt("PIN")
+                    .interact()
+                    .map_err(|e| anyhow!(e))?;
+                pin
+            }
+        };
+
+        let verify = if signing {
+            tx.verify_pw1_sign(pin.expose_secret().as_bytes())
+        } else {
+            tx.verify_pw1_user(pin.expose_secret().as_bytes())
+        };
+        match verify {
+            Ok(()) => {
+                if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(&ident) {
+                    card.pin = Some(pin);
+                }
+                Ok(tx)
+            }
+            Err(e) => {
+                if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(&ident) {
+                    card.pin = None;
+                }
+                Err(e.into())
+            }
         }
-        let mut input =
-            PassphraseInput::with_default_binary().ok_or(anyhow!("pinentry binary not found"))?;
-        let pin = input
-            .with_description(&format!("Please unlock the card: {}", ident))
-            .with_prompt("PIN")
-            .interact()
-            .map_err(|e| anyhow!("failed to get pin: {}", e))?;
-        if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(ident) {
-            card.pin = Some(pin.clone());
-        }
-        Ok(pin)
     }
-    fn forget_pin(&self, ident: &str) {
-        if let Some(mut card) = self.inner.lock().unwrap().cards.get_mut(ident) {
-            card.pin = None;
-        }
-    }
-    fn public(card: &mut OpenPgp) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
-        let tx = card.transaction()?;
+    fn public(tx: OpenPgpTransaction) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         let mut open = Open::new(tx)?;
         let ctime = open.key_generation_times()?;
         let ctime: SystemTime = ctime
@@ -139,16 +160,15 @@ impl SshAgentImpl {
         Ok(key)
     }
     fn sign<'a>(
-        card: &mut OpenPgp,
-        pin: SecretString,
+        &self,
+        tx: OpenPgpTransaction,
+        key: Key<PublicParts, UnspecifiedRole>,
         hash_algo: HashAlgorithm,
         digest: &[u8],
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<openpgp::crypto::mpi::Signature> {
-        let key = Self::public(card)?;
-        let tx = card.transaction()?;
+        let tx = self.verify_user(tx, true)?;
         let mut open = Open::new(tx)?;
-        open.verify_user_for_signing(pin.expose_secret().as_bytes())?;
         let mut sign = open
             .signing_card()
             .ok_or(anyhow!("failed to open signing card"))?;
@@ -178,12 +198,13 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
         let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(&ident, None)
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
-        let key = Self::public(&mut card).map_err(|e| Status::unavailable(e.to_string()))?;
+        let tx = card.transaction().unwrap();
+        let key = Self::public(tx).map_err(|e| Status::unavailable(e.to_string()))?;
         let mut bytes = vec![];
-        Packet::from(key.role_as_primary().clone()).serialize(&mut bytes);
-        Ok(Response::new(PublicResponse {
-            key: bytes,
-        }))
+        Packet::from(key.role_as_primary().clone())
+            .serialize(&mut bytes)
+            .unwrap();
+        Ok(Response::new(PublicResponse { key: bytes }))
     }
     async fn sign(
         &self,
@@ -204,10 +225,17 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
         let hash_algo = (request.hash_algo as u8).into();
-        let pin = self
-            .request_pin(&ident)
+        let tx = card
+            .transaction()
             .map_err(|e| Status::unavailable(e.to_string()))?;
-        let sig = Self::sign(&mut card, pin, hash_algo, &request.digest, &|| {})
+        let tx = self
+            .verify_user(tx, false)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+        let key = Self::public(tx).unwrap();
+        let tx = card
+            .transaction()
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+        let sig = self.sign(tx, key, hash_algo, &request.digest, &|| {})
             .map_err(|e| Status::unavailable(e.to_string()))?;
         Ok(Response::new(sequoia::SignResponse {
             signature: sig.to_vec().unwrap(),
@@ -258,17 +286,10 @@ impl SshAgent for SshAgentImpl {
         let mut card = openpgp_card_pcsc::PcscBackend::open_by_ident(&ident, None)
             .map_err(|e| Status::unavailable(e.to_string()))?;
         let mut card = openpgp_card::OpenPgp::new(&mut card);
-        let mut tx = card
+        let tx = card
             .transaction()
             .map_err(|e| Status::unavailable(e.to_string()))?;
-        let pin = self
-            .request_pin(&ident)
-            .map_err(|e| Status::unavailable(e.to_string()))?;
-        tx.verify_pw1_user(pin.expose_secret().as_bytes())
-            .map_err(|e| {
-                self.forget_pin(&ident);
-                Status::unavailable(e.to_string())
-            })?;
+        let mut tx = self.verify_user(tx, true).unwrap();
         use openpgp_card::crypto_data::Hash;
         let hash = Hash::EdDSA(&request.data);
         let sig = tx
