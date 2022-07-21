@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+
 use openpgp::crypto::Signer as SequoiaSigner;
 use openpgp::packet::key::Key4;
 use openpgp::packet::key::PublicParts;
@@ -8,25 +9,29 @@ use openpgp::packet::Packet;
 use openpgp::serialize::Marshal;
 use openpgp::serialize::MarshalInto;
 use openpgp::types::HashAlgorithm;
-
-use openpgp_card::OpenPgpTransaction;
-use openpgp_card_sequoia::card::Open;
-
-use pinentry::PassphraseInput;
-use secrecy::ExposeSecret;
-use secrecy::SecretString;
-use sequoia::PublicResponse;
 use sequoia_openpgp as openpgp;
-use ssh_agent_lib::proto::Blob;
-use ssh_agent_lib::proto::Signature;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::SystemTime;
 
 use openpgp_card::algorithm::{Algo, Curve};
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
+use openpgp_card::OpenPgpTransaction;
+
+use openpgp_card_sequoia::card::Open;
+
+use pinentry::PassphraseInput;
+
+use secrecy::ExposeSecret;
+use secrecy::SecretString;
+
+use sequoia::PublicResponse;
+
+use ssh_agent_lib::proto::Blob;
+use ssh_agent_lib::proto::Signature;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 use rpc::ssh_agent_server::{SshAgent, SshAgentServer};
 use rpc::{IdentitiesResponse, Identity, SignRequest, SignResponse};
@@ -235,7 +240,8 @@ impl sequoia::signer_server::Signer for SshAgentImpl {
         let tx = card
             .transaction()
             .map_err(|e| Status::unavailable(e.to_string()))?;
-        let sig = self.sign(tx, key, hash_algo, &request.digest, &|| {})
+        let sig = self
+            .sign(tx, key, hash_algo, &request.digest, &|| {})
             .map_err(|e| Status::unavailable(e.to_string()))?;
         Ok(Response::new(sequoia::SignResponse {
             signature: sig.to_vec().unwrap(),
