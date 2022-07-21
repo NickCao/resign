@@ -24,10 +24,10 @@ use pinentry::PassphraseInput;
 use rpc::SignRequest;
 use secrecy::ExposeSecret;
 use sequoia_openpgp as openpgp;
-use tokio::runtime::Handle;
 use std::fs::File;
 use std::io::Write;
 use std::os::unix::io::FromRawFd;
+use tokio::runtime::Handle;
 use tokio::runtime::Runtime;
 use tonic::transport::Channel;
 
@@ -98,9 +98,7 @@ impl openpgp::crypto::Signer for Remote {
             hash_algo: u8::from(hash_algo) as u32,
             digest: digest.to_vec(),
         };
-        // let handle = Handle::current();
-        // let enter = handle.enter();
-        let resp = futures::executor::block_on(self.client.sign(req));
+        let resp = Handle::current().block_on(self.client.sign(req));
         openpgp::crypto::mpi::Signature::parse(
             self.key.pk_algo(),
             &*(resp.unwrap().into_inner().signature),
@@ -131,14 +129,16 @@ async fn main() -> Result<()> {
         )
         .await
         .unwrap();
-        let message = Message::new(std::io::stdout());
-        let armored = Armorer::new(message).kind(armor::Kind::Signature).build()?;
-        let signer = Signer::new(armored, remote);
-        let mut signer = signer.detached().build()?;
-        std::io::copy(&mut std::io::stdin(), &mut signer)?;
-        signer.finalize()?;
-        status_fd.write(b"[GNUPG:] SIG_CREATED \n")?;
-        return Ok(());
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let message = Message::new(std::io::stdout());
+            let armored = Armorer::new(message).kind(armor::Kind::Signature).build()?;
+            let signer = Signer::new(armored, remote);
+            let mut signer = signer.detached().build()?;
+            std::io::copy(&mut std::io::stdin(), &mut signer)?;
+            signer.finalize()?;
+            status_fd.write(b"[GNUPG:] SIG_CREATED \n")?;
+            Ok(())
+        }).await.unwrap()
     } else if args.verify {
         if args.args.len() != 2 {
             return Err(anyhow!("unsupported number of arguments"));
