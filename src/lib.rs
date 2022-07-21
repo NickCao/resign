@@ -19,6 +19,8 @@ use openpgp_card_pcsc::PcscBackend;
 use openpgp_card_sequoia::card::Open;
 use sequoia_openpgp as openpgp;
 
+pub mod agent;
+
 #[derive(Default)]
 pub struct Backend {
     pin: Option<SecretString>,
