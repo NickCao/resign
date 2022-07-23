@@ -16,7 +16,12 @@
           resign = rustPlatform.buildRustPackage {
             name = "resign";
             src = self;
-            cargoLock.lockFile = ./Cargo.lock;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              outputHashes = {
+                "openpgp-card-0.2.7" = "sha256-4GwWgf+loboyhhg8M2FB3XiQ7H4bcIEItAO4TAErWrE=";
+              };
+            };
             nativeBuildInputs = [ pkg-config cmake rustPlatform.bindgenHook ];
             buildInputs = [ nettle pcsclite ];
           };
