@@ -22,6 +22,54 @@ pub struct Agent {
 }
 
 #[tonic::async_trait]
+impl sequoia::decryptor_server::Decryptor for Agent {
+    async fn public(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<sequoia::PublicResponse>, Status> {
+        let resp = || -> anyhow::Result<sequoia::PublicResponse> {
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let key = backend.public(tx, openpgp_card::KeyType::Decryption)?;
+            let key = Packet::from(key.role_as_primary().clone()).to_vec()?;
+            Ok(PublicResponse { key })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
+    }
+    async fn decrypt(
+        &self,
+        request: Request<sequoia::DecryptRequest>,
+    ) -> Result<Response<sequoia::DecryptResponse>, Status> {
+        let resp = || -> anyhow::Result<sequoia::DecryptResponse> {
+            let request = request.into_inner();
+            let mut backend = self.backend.lock().unwrap();
+            let mut card = backend.open()?;
+            let mut card = OpenPgp::new(&mut card);
+            let tx = card.transaction()?;
+            let key = backend.public(tx, openpgp_card::KeyType::Decryption)?;
+            let tx = card.transaction()?;
+            let ciphertext =
+                openpgp::crypto::mpi::Ciphertext::parse(key.pk_algo(), &*request.ciphertext)?;
+            let session_key = backend.decrypt(
+                tx,
+                key,
+                &ciphertext,
+                request.plaintext_len.map(|x| x as usize),
+                &|| {},
+            )?;
+            Ok(sequoia::DecryptResponse {
+                session_key: session_key.to_vec(),
+            })
+        }()
+        .map_err(|e| Status::unavailable(e.to_string()))?;
+        Ok(Response::new(resp))
+    }
+}
+
+#[tonic::async_trait]
 impl sequoia::signer_server::Signer for Agent {
     async fn public(
         &self,
