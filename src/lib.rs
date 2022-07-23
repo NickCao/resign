@@ -5,7 +5,8 @@ use secrecy::SecretString;
 use ssh_agent_lib::proto::Blob;
 use std::time::SystemTime;
 
-use openpgp::crypto::Signer as SequoiaSigner;
+use openpgp::crypto::Decryptor as _;
+use openpgp::crypto::Signer as _;
 use openpgp::packet::key::Key4;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
@@ -38,6 +39,7 @@ impl Backend {
     pub fn public(
         &mut self,
         tx: OpenPgpTransaction,
+        key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         let mut open = Open::new(tx)?;
         let ctime = open.key_generation_times()?;
@@ -46,7 +48,7 @@ impl Backend {
             .ok_or_else(|| anyhow!("ctime for signature subkey ununavailable"))?
             .to_datetime()
             .into();
-        let key = open.public_key(KeyType::Signing)?;
+        let key = open.public_key(key_type)?;
         let key: Key<PublicParts, UnspecifiedRole> = match key {
             PublicKeyMaterial::E(k) => match k.algo() {
                 Algo::Ecc(attrs) => match attrs.curve() {
@@ -98,6 +100,23 @@ impl Backend {
             .ok_or_else(|| anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer_from_pubkey(key, touch_prompt);
         signer.sign(hash_algo, digest)
+    }
+
+    pub fn decrypt<'a>(
+        &mut self,
+        tx: OpenPgpTransaction,
+        key: Key<PublicParts, UnspecifiedRole>,
+        ciphertext: &openpgp::crypto::mpi::Ciphertext,
+        plaintext_len: Option<usize>,
+        touch_prompt: &'a (dyn Fn() + Send + Sync),
+    ) -> anyhow::Result<openpgp::crypto::SessionKey> {
+        let tx = self.verify_user(tx, false)?;
+        let mut open = Open::new(tx)?;
+        let mut decrypt = open
+            .user_card()
+            .ok_or_else(|| anyhow!("failed to open user card"))?;
+        let mut decryptor = decrypt.decryptor_from_pubkey(key, touch_prompt);
+        decryptor.decrypt(ciphertext, plaintext_len)
     }
 
     pub fn auth_ssh(&mut self, tx: OpenPgpTransaction, data: &[u8]) -> anyhow::Result<Vec<u8>> {

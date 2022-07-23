@@ -43,6 +43,9 @@ struct Args {
     /// verify a signature
     #[clap(long = "verify")]
     verify: bool,
+    /// decrypt data
+    #[clap(short = 'd', long = "decrypt")]
+    decrypt: bool,
     /// create ascii armored output
     #[clap(short = 'a', long = "armor")]
     armor: bool,
@@ -55,6 +58,9 @@ struct Args {
     /// select how to display key IDs
     #[clap(long = "keyid-format")]
     keyid_format: Option<String>,
+    /// this is dummy option, gpg always requires the agent
+    #[clap(long = "use-agent")]
+    use_agent: bool,
     #[clap(value_parser)]
     args: Vec<String>,
 }
@@ -106,8 +112,9 @@ async fn main() -> anyhow::Result<()> {
 
     assert!(args.status_fd.is_some());
     let mut status_fd = unsafe { File::from_raw_fd(args.status_fd.unwrap()) };
-
-    if args.sign {
+    if args.decrypt {
+        Ok(())
+    } else if args.sign {
         assert!(args.detach_sign);
         assert!(args.armor);
         assert!(args.local_user.is_some());

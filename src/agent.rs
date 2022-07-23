@@ -32,7 +32,7 @@ impl sequoia::signer_server::Signer for Agent {
             let mut card = backend.open()?;
             let mut card = OpenPgp::new(&mut card);
             let tx = card.transaction()?;
-            let key = backend.public(tx)?;
+            let key = backend.public(tx, openpgp_card::KeyType::Signing)?;
             let key = Packet::from(key.role_as_primary().clone()).to_vec()?;
             Ok(PublicResponse { key })
         }()
@@ -49,7 +49,7 @@ impl sequoia::signer_server::Signer for Agent {
             let mut card = backend.open()?;
             let mut card = OpenPgp::new(&mut card);
             let tx = card.transaction()?;
-            let key = backend.public(tx)?;
+            let key = backend.public(tx, openpgp_card::KeyType::Signing)?;
             let tx = card.transaction()?;
             let hash_algo = request.hash_algo as u8;
             let sig = backend.sign(tx, key, hash_algo.into(), &request.digest, &|| {})?;

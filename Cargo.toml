@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 sequoia-openpgp = "1.10.0"
-openpgp-card = "0.2.7"
-openpgp-card-pcsc = "0.2.1"
-openpgp-card-sequoia = "0.0.14"
+openpgp-card = { git = "https://gitlab.com/NickCao/openpgp-card.git" }
+openpgp-card-pcsc = { git = "https://gitlab.com/NickCao/openpgp-card.git" }
+openpgp-card-sequoia = { git = "https://gitlab.com/NickCao/openpgp-card.git" }
 pinentry = "0.5.0"
 secrecy = "0.8.0"
 clap = { version = "3.2.12", features = [ "derive" ] }
