@@ -71,6 +71,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use resign::agent::sequoia::decryptor_server::DecryptorServer;
     use resign::agent::sequoia::signer_server::SignerServer;
     use resign::agent::ssh::agent_client::AgentClient;
     use resign::agent::ssh::agent_server::AgentServer;
@@ -91,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Server::builder()
             .add_service(AgentServer::new(agent.clone()))
             .add_service(SignerServer::new(agent.clone()))
+            .add_service(DecryptorServer::new(agent.clone()))
             .serve_with_incoming(UnixListenerStream::new(uds)),
     );
 

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -43,9 +44,14 @@ impl Backend {
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         let mut open = Open::new(tx)?;
         let ctime = open.key_generation_times()?;
+        let ctime = match key_type {
+            KeyType::Signing => ctime.signature(),
+            KeyType::Authentication => ctime.authentication(),
+            KeyType::Decryption => ctime.decryption(),
+            _ => unimplemented!(),
+        };
         let ctime: SystemTime = ctime
-            .signature()
-            .ok_or_else(|| anyhow!("ctime for signature subkey ununavailable"))?
+            .ok_or_else(|| anyhow!("ctime for subkey ununavailable"))?
             .to_datetime()
             .into();
         let key = open.public_key(key_type)?;
@@ -53,6 +59,9 @@ impl Backend {
             PublicKeyMaterial::E(k) => match k.algo() {
                 Algo::Ecc(attrs) => match attrs.curve() {
                     Curve::Ed25519 => Key::V4(Key4::import_public_ed25519(k.data(), ctime)?),
+                    Curve::Cv25519 => {
+                        Key::V4(Key4::import_public_cv25519(k.data(), None, None, ctime)?)
+                    }
                     _ => unimplemented!(),
                 },
                 _ => unimplemented!(),
