@@ -97,7 +97,6 @@ impl Backend {
     pub fn sign<'a>(
         &mut self,
         tx: OpenPgpTransaction,
-        key: Key<PublicParts, UnspecifiedRole>,
         hash_algo: HashAlgorithm,
         digest: &[u8],
         touch_prompt: &'a (dyn Fn() + Send + Sync),
@@ -107,14 +106,13 @@ impl Backend {
         let mut sign = open
             .signing_card()
             .ok_or_else(|| anyhow!("failed to open signing card"))?;
-        let mut signer = sign.signer_from_pubkey(key, touch_prompt);
+        let mut signer = sign.signer(touch_prompt)?;
         signer.sign(hash_algo, digest)
     }
 
     pub fn decrypt<'a>(
         &mut self,
         tx: OpenPgpTransaction,
-        key: Key<PublicParts, UnspecifiedRole>,
         ciphertext: &openpgp::crypto::mpi::Ciphertext,
         plaintext_len: Option<usize>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
@@ -124,7 +122,7 @@ impl Backend {
         let mut decrypt = open
             .user_card()
             .ok_or_else(|| anyhow!("failed to open user card"))?;
-        let mut decryptor = decrypt.decryptor_from_pubkey(key, touch_prompt);
+        let mut decryptor = decrypt.decryptor(touch_prompt)?;
         decryptor.decrypt(ciphertext, plaintext_len)
     }
 

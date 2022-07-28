@@ -55,7 +55,6 @@ impl sequoia::decryptor_server::Decryptor for Agent {
                 openpgp::crypto::mpi::Ciphertext::parse(key.pk_algo(), &*request.ciphertext)?;
             let session_key = backend.decrypt(
                 tx,
-                key,
                 &ciphertext,
                 request.plaintext_len.map(|x| x as usize),
                 &|| {},
@@ -97,10 +96,8 @@ impl sequoia::signer_server::Signer for Agent {
             let mut card = backend.open()?;
             let mut card = OpenPgp::new(&mut card);
             let tx = card.transaction()?;
-            let key = backend.public(tx, openpgp_card::KeyType::Signing)?;
-            let tx = card.transaction()?;
             let hash_algo = request.hash_algo as u8;
-            let sig = backend.sign(tx, key, hash_algo.into(), &request.digest, &|| {})?;
+            let sig = backend.sign(tx, hash_algo.into(), &request.digest, &|| {})?;
             Ok(sequoia::SignResponse {
                 signature: sig.to_vec()?,
             })
