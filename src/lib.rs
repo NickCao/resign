@@ -4,11 +4,9 @@ use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use ssh_agent_lib::proto::Blob;
-use std::time::SystemTime;
 
 use openpgp::crypto::Decryptor as _;
 use openpgp::crypto::Signer as _;
-use openpgp::packet::key::Key4;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::Key;
@@ -43,33 +41,8 @@ impl Backend {
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         let mut open = Open::new(tx)?;
-        let ctime = open.key_generation_times()?;
-        let ctime = match key_type {
-            KeyType::Signing => ctime.signature(),
-            KeyType::Authentication => ctime.authentication(),
-            KeyType::Decryption => ctime.decryption(),
-            _ => unimplemented!(),
-        };
-        let ctime: SystemTime = ctime
-            .ok_or_else(|| anyhow!("ctime for subkey ununavailable"))?
-            .to_datetime()
-            .into();
-        let key = open.public_key(key_type)?;
-        let key: Key<PublicParts, UnspecifiedRole> = match key {
-            PublicKeyMaterial::E(k) => match k.algo() {
-                Algo::Ecc(attrs) => match attrs.curve() {
-                    Curve::Ed25519 => Key::V4(Key4::import_public_ed25519(k.data(), ctime)?),
-                    Curve::Cv25519 => {
-                        Key::V4(Key4::import_public_cv25519(k.data(), None, None, ctime)?)
-                    }
-                    _ => unimplemented!(),
-                },
-                _ => unimplemented!(),
-            },
-            PublicKeyMaterial::R(k) => Key::V4(Key4::import_public_rsa(k.v(), k.n(), ctime)?),
-            _ => unimplemented!(),
-        };
-        Ok(key)
+        openpgp_card_sequoia::util::key_slot(&mut open, key_type)?
+            .ok_or_else(|| anyhow!("no key matching key type"))
     }
 
     pub fn public_ssh(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
