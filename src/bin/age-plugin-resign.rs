@@ -7,12 +7,10 @@ use age_plugin::{
 use clap::Parser;
 use openpgp_card::OpenPgp;
 use secrecy::ExposeSecret;
+
 use sequoia_openpgp::packet::{prelude::PKESK3, PKESK};
-use sequoia_openpgp::{
-    crypto::{SessionKey},
-    packet::key::PublicParts,
-    parse::Parse,
-};
+use sequoia_openpgp::types::SymmetricAlgorithm;
+use sequoia_openpgp::{crypto::SessionKey, packet::key::PublicParts, parse::Parse};
 use sequoia_openpgp::{
     packet::{key::UnspecifiedRole, Key},
     serialize::MarshalInto,
@@ -21,6 +19,7 @@ use std::io;
 use std::{collections::HashMap, vec};
 
 const PLUGIN_NAME: &str = "resign";
+const STANZA_TAG: &str = "resign-pkesk-v1";
 
 /// age-plugin-resign
 #[derive(Parser, Debug)]
@@ -29,6 +28,35 @@ struct Args {
     /// Run the given age plugin state machine. Internal use only.
     #[clap(long = "age-plugin", id = "STATE-MACHINE")]
     age_plugin: Option<String>,
+}
+
+struct Wrapped(PKESK);
+
+impl TryFrom<Stanza> for Wrapped {
+    type Error = io::Error;
+    fn try_from(value: Stanza) -> Result<Self, Self::Error> {
+        if value.tag != STANZA_TAG || value.args.len() != 0 {
+            return Err(io::Error::new(io::ErrorKind::Other, "invalid stanza"));
+        }
+        Ok(Self(PKESK::from_bytes(&value.body).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, e.to_string())
+        })?))
+    }
+}
+
+impl TryInto<Stanza> for Wrapped {
+    type Error = io::Error;
+    fn try_into(self) -> Result<Stanza, Self::Error> {
+        let body = self
+            .0
+            .to_vec()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        Ok(Stanza {
+            tag: STANZA_TAG.to_string(),
+            args: vec![],
+            body,
+        })
+    }
 }
 
 #[derive(Default)]
@@ -80,19 +108,11 @@ impl RecipientPluginV1 for RecipientPlugin {
                     .iter()
                     .map(|pk| {
                         let data = SessionKey::from(file_key.expose_secret().as_slice());
-                        let ciphertext = PKESK::V3(
-                            PKESK3::for_recipient(
-                                sequoia_openpgp::types::SymmetricAlgorithm::AES128,
-                                &data,
-                                pk,
-                            )
-                            .unwrap(),
-                        );
-                        Ok(Stanza {
-                            tag: "resign".to_string(),
-                            args: vec![],
-                            body: ciphertext.to_vec().unwrap(),
-                        })
+                        Ok(Wrapped(PKESK::V3(
+                            PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, pk).unwrap(),
+                        ))
+                        .try_into()
+                        .unwrap())
                     })
                     .collect()
             })
@@ -130,14 +150,14 @@ impl IdentityPluginV1 for IdentityPlugin {
             .open()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let mut card = OpenPgp::new(&mut card);
-        for (index, file) in files.iter().enumerate() {
+        for (index, file) in files.into_iter().enumerate() {
             for stanza in file {
                 if stanza.tag != "resign" {
                     continue;
                 }
                 let tx = card.transaction().unwrap();
-                let pkesk = PKESK3::from_bytes(&*stanza.body).unwrap();
-                let sk = backend.decrypt_pkesk(tx, &PKESK::V3(pkesk), &|| {});
+                let pkesk = Wrapped::try_from(stanza).unwrap().0;
+                let sk = backend.decrypt_pkesk(tx, &pkesk, &|| {});
                 let mut fk = [0u8; 16];
                 fk.copy_from_slice(&sk.unwrap().1);
                 file_keys.insert(index, Ok(FileKey::from(fk)));
