@@ -1,5 +1,10 @@
 use anyhow::anyhow;
 
+use openpgp::crypto::SessionKey;
+use openpgp::packet::key::PublicParts;
+use openpgp::packet::key::UnspecifiedRole;
+use openpgp::packet::prelude::Key;
+use openpgp::types::SymmetricAlgorithm;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -32,18 +37,14 @@ impl Backend {
             .ok_or_else(|| anyhow!("no card available"))
     }
 
-    pub fn decryption_key(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<Vec<u8>> {
-        let key = tx.public_key(KeyType::Decryption)?;
-        match key {
-            PublicKeyMaterial::E(ecc) => match ecc.algo() {
-                Algo::Ecc(attrs) => match attrs.curve() {
-                    Curve::Cv25519 => Ok(ecc.data().to_vec()),
-                    _ => unimplemented!(),
-                },
-                _ => unimplemented!(),
-            },
-            _ => unimplemented!(),
-        }
+    pub fn public_raw(
+        &mut self,
+        tx: OpenPgpTransaction,
+        key_type: KeyType,
+    ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
+        let mut open = Open::new(tx)?;
+        openpgp_card_sequoia::util::key_slot(&mut open, key_type)?
+            .ok_or_else(|| anyhow!("no key matching key type"))
     }
 
     pub fn public(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
@@ -82,6 +83,23 @@ impl Backend {
             .ok_or_else(|| anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer(touch_prompt)?;
         signer.sign(hash_algo, digest)
+    }
+
+    pub fn decrypt_pkesk<'a>(
+        &mut self,
+        tx: OpenPgpTransaction,
+        pkesk: &openpgp::packet::PKESK,
+        touch_prompt: &'a (dyn Fn() + Send + Sync),
+    ) -> anyhow::Result<(SymmetricAlgorithm, SessionKey)> {
+        let tx = self.verify_user(tx, false)?;
+        let mut open = Open::new(tx)?;
+        let mut decrypt = open
+            .user_card()
+            .ok_or_else(|| anyhow!("failed to open user card"))?;
+        let mut decryptor = decrypt.decryptor(touch_prompt)?;
+        pkesk
+            .decrypt(&mut decryptor, None)
+            .ok_or(anyhow!("failed to decrypt"))
     }
 
     pub fn decrypt<'a>(

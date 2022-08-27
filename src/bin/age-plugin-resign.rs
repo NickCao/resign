@@ -7,13 +7,18 @@ use age_plugin::{
 use clap::Parser;
 use openpgp_card::OpenPgp;
 use secrecy::ExposeSecret;
-use sequoia_openpgp::{crypto::SessionKey, packet::key::PublicParts};
+use sequoia_openpgp::packet::{prelude::PKESK3, PKESK};
+use sequoia_openpgp::{
+    crypto::{mpi::Ciphertext, SessionKey},
+    packet::key::PublicParts,
+    parse::Parse,
+};
 use sequoia_openpgp::{
     packet::{key::UnspecifiedRole, prelude::Key4, Key},
     serialize::MarshalInto,
 };
-use std::collections::HashMap;
 use std::io;
+use std::{collections::HashMap, vec};
 
 const PLUGIN_NAME: &str = "resign";
 
@@ -42,14 +47,10 @@ impl RecipientPluginV1 for RecipientPlugin {
         if plugin_name != PLUGIN_NAME {
             unreachable!()
         }
-        let key: Key<_, UnspecifiedRole> = Key::V4(
-            Key4::import_public_cv25519(&bytes, None, None, None).map_err(|e| {
-                recipient::Error::Recipient {
-                    index,
-                    message: e.to_string(),
-                }
-            })?,
-        );
+        let key = Key::from_bytes(&bytes)
+            .unwrap()
+            .parts_as_public()
+            .to_owned();
         self.recipients.push(key);
         Ok(())
     }
@@ -79,11 +80,14 @@ impl RecipientPluginV1 for RecipientPlugin {
                     .iter()
                     .map(|pk| {
                         let data = SessionKey::from(file_key.expose_secret().as_slice());
-                        let ciphertext = pk.encrypt(&data).map_err(|e| {
-                            vec![recipient::Error::Internal {
-                                message: e.to_string(),
-                            }]
-                        })?;
+                        let ciphertext = PKESK::V3(
+                            PKESK3::for_recipient(
+                                sequoia_openpgp::types::SymmetricAlgorithm::AES128,
+                                &data,
+                                pk,
+                            )
+                            .unwrap(),
+                        );
                         Ok(Stanza {
                             tag: "resign".to_string(),
                             args: vec![],
@@ -117,10 +121,30 @@ impl IdentityPluginV1 for IdentityPlugin {
 
     fn unwrap_file_keys(
         &mut self,
-        _files: Vec<Vec<Stanza>>,
+        files: Vec<Vec<Stanza>>,
         mut _callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
-        todo!()
+        let mut file_keys = HashMap::new();
+        let mut backend = resign::Backend::default();
+        let mut card = backend
+            .open()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut card = OpenPgp::new(&mut card);
+        for (index, file) in files.iter().enumerate() {
+            for stanza in file {
+                if stanza.tag != "resign" {
+                    continue;
+                }
+                let tx = card.transaction().unwrap();
+                let pkesk = PKESK3::from_bytes(&*stanza.body).unwrap();
+                let sk = backend.decrypt_pkesk(tx, &PKESK::V3(pkesk), &|| {});
+                let mut fk = [0u8; 16];
+                fk.copy_from_slice(&sk.unwrap().1);
+                file_keys.insert(index, Ok(FileKey::from(fk)));
+                break;
+            }
+        }
+        Ok(file_keys)
     }
 }
 
@@ -143,8 +167,10 @@ fn main() -> io::Result<()> {
                 .application_id()
                 .unwrap()
                 .ident();
-            let pk = backend.decryption_key(tx).unwrap();
-            age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk);
+            let pk = backend
+                .public_raw(tx, openpgp_card::KeyType::Decryption)
+                .unwrap();
+            age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk.to_vec().unwrap());
             Ok(())
         }
     }
