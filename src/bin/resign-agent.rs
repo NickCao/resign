@@ -7,7 +7,7 @@ use ssh_agent_lib::Agent as _;
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// listen address
-    #[clap(short = 's')]
+    #[clap(short = 'l', long = "listen")]
     listen: String,
 }
 
