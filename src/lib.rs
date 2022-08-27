@@ -7,9 +7,6 @@ use ssh_agent_lib::proto::Blob;
 
 use openpgp::crypto::Decryptor as _;
 use openpgp::crypto::Signer as _;
-use openpgp::packet::key::PublicParts;
-use openpgp::packet::key::UnspecifiedRole;
-use openpgp::packet::Key;
 use openpgp::types::HashAlgorithm;
 use openpgp_card::algorithm::{Algo, Curve};
 use openpgp_card::crypto_data::PublicKeyMaterial;
@@ -35,17 +32,7 @@ impl Backend {
             .ok_or_else(|| anyhow!("no card available"))
     }
 
-    pub fn public(
-        &mut self,
-        tx: OpenPgpTransaction,
-        key_type: KeyType,
-    ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
-        let mut open = Open::new(tx)?;
-        openpgp_card_sequoia::util::key_slot(&mut open, key_type)?
-            .ok_or_else(|| anyhow!("no key matching key type"))
-    }
-
-    pub fn public_ssh(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+    pub fn public(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         let ident = tx.application_related_data()?.application_id()?.ident();
         let key = tx.public_key(KeyType::Authentication)?;
         let key_blob = match key {
@@ -99,7 +86,7 @@ impl Backend {
         decryptor.decrypt(ciphertext, plaintext_len)
     }
 
-    pub fn auth_ssh(&mut self, tx: OpenPgpTransaction, data: &[u8]) -> anyhow::Result<Vec<u8>> {
+    pub fn auth(&mut self, tx: OpenPgpTransaction, data: &[u8]) -> anyhow::Result<Vec<u8>> {
         let hash = openpgp_card::crypto_data::Hash::EdDSA(data);
         let mut tx = self.verify_user(tx, false)?;
         let blob = tx.authenticate_for_hash(hash)?;
