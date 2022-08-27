@@ -9,12 +9,12 @@ use openpgp_card::OpenPgp;
 use secrecy::ExposeSecret;
 use sequoia_openpgp::packet::{prelude::PKESK3, PKESK};
 use sequoia_openpgp::{
-    crypto::{mpi::Ciphertext, SessionKey},
+    crypto::{SessionKey},
     packet::key::PublicParts,
     parse::Parse,
 };
 use sequoia_openpgp::{
-    packet::{key::UnspecifiedRole, prelude::Key4, Key},
+    packet::{key::UnspecifiedRole, Key},
     serialize::MarshalInto,
 };
 use std::io;
@@ -40,7 +40,7 @@ struct RecipientPlugin {
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
-        index: usize,
+        _index: usize,
         plugin_name: &str,
         bytes: &[u8],
     ) -> Result<(), recipient::Error> {
@@ -153,8 +153,8 @@ fn main() -> io::Result<()> {
     match args.age_plugin {
         Some(state_machine) => run_state_machine(
             &state_machine,
-            || RecipientPlugin::default(),
-            || IdentityPlugin::default(),
+            RecipientPlugin::default,
+            IdentityPlugin::default,
         ),
         None => {
             let mut backend = resign::Backend::default();
