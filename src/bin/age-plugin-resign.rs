@@ -8,8 +8,11 @@ use clap::Parser;
 use openpgp_card::OpenPgp;
 use secrecy::ExposeSecret;
 
-use sequoia_openpgp::packet::{prelude::PKESK3, PKESK};
 use sequoia_openpgp::types::SymmetricAlgorithm;
+use sequoia_openpgp::{
+    crypto::Decryptor,
+    packet::{prelude::PKESK3, PKESK},
+};
 use sequoia_openpgp::{crypto::SessionKey, packet::key::PublicParts, parse::Parse};
 use sequoia_openpgp::{
     packet::{key::UnspecifiedRole, Key},
@@ -31,6 +34,17 @@ struct Args {
 }
 
 struct Wrapped(PKESK);
+
+impl Wrapped {
+    fn wrap(file_key: &FileKey, rcpt: &Key<PublicParts, UnspecifiedRole>) -> anyhow::Result<Self> {
+        let data = SessionKey::from(file_key.expose_secret().as_slice());
+        let pkesk = PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, rcpt)?;
+        Ok(Wrapped(PKESK::V3(pkesk)).try_into()?)
+    }
+    fn unwrap<T: Decryptor>(&self, mut decryptor: T) -> anyhow::Result<SessionKey> {
+        Ok(self.0.decrypt(&mut decryptor, None).unwrap().1)
+    }
+}
 
 impl TryFrom<Stanza> for Wrapped {
     type Error = io::Error;
@@ -107,12 +121,14 @@ impl RecipientPluginV1 for RecipientPlugin {
                 self.recipients
                     .iter()
                     .map(|pk| {
-                        let data = SessionKey::from(file_key.expose_secret().as_slice());
-                        Ok(Wrapped(PKESK::V3(
-                            PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, pk).unwrap(),
-                        ))
-                        .try_into()
-                        .unwrap())
+                        Ok(Wrapped::wrap(&file_key, pk)
+                            .map_err(|e| {
+                                vec![recipient::Error::Internal {
+                                    message: e.to_string(),
+                                }]
+                            })?
+                            .try_into()
+                            .unwrap())
                     })
                     .collect()
             })
