@@ -6,14 +6,12 @@ use age_plugin::{
 };
 use clap::Parser;
 use openpgp_card::OpenPgp;
-use secrecy::ExposeSecret;
+use resign::pkesk::PKESK;
 
-use sequoia_openpgp::types::SymmetricAlgorithm;
-use sequoia_openpgp::{
-    crypto::Decryptor,
-    packet::{prelude::PKESK3, PKESK},
-};
-use sequoia_openpgp::{crypto::SessionKey, packet::key::PublicParts, parse::Parse};
+
+
+
+use sequoia_openpgp::{packet::key::PublicParts, parse::Parse};
 use sequoia_openpgp::{
     packet::{key::UnspecifiedRole, Key},
     serialize::MarshalInto,
@@ -31,46 +29,6 @@ struct Args {
     /// Run the given age plugin state machine. Internal use only.
     #[clap(long = "age-plugin", id = "STATE-MACHINE")]
     age_plugin: Option<String>,
-}
-
-struct Wrapped(PKESK);
-
-impl Wrapped {
-    fn wrap(file_key: &FileKey, rcpt: &Key<PublicParts, UnspecifiedRole>) -> anyhow::Result<Self> {
-        let data = SessionKey::from(file_key.expose_secret().as_slice());
-        let pkesk = PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, rcpt)?;
-        Ok(Wrapped(PKESK::V3(pkesk)).try_into()?)
-    }
-    fn unwrap<T: Decryptor>(&self, mut decryptor: T) -> anyhow::Result<SessionKey> {
-        Ok(self.0.decrypt(&mut decryptor, None).unwrap().1)
-    }
-}
-
-impl TryFrom<Stanza> for Wrapped {
-    type Error = io::Error;
-    fn try_from(value: Stanza) -> Result<Self, Self::Error> {
-        if value.tag != STANZA_TAG || value.args.len() != 0 {
-            return Err(io::Error::new(io::ErrorKind::Other, "invalid stanza"));
-        }
-        Ok(Self(PKESK::from_bytes(&value.body).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, e.to_string())
-        })?))
-    }
-}
-
-impl TryInto<Stanza> for Wrapped {
-    type Error = io::Error;
-    fn try_into(self) -> Result<Stanza, Self::Error> {
-        let body = self
-            .0
-            .to_vec()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        Ok(Stanza {
-            tag: STANZA_TAG.to_string(),
-            args: vec![],
-            body,
-        })
-    }
 }
 
 #[derive(Default)]
@@ -121,7 +79,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                 self.recipients
                     .iter()
                     .map(|pk| {
-                        Ok(Wrapped::wrap(&file_key, pk)
+                        Ok(PKESK::wrap(&file_key, pk)
                             .map_err(|e| {
                                 vec![recipient::Error::Internal {
                                     message: e.to_string(),
@@ -172,10 +130,10 @@ impl IdentityPluginV1 for IdentityPlugin {
                     continue;
                 }
                 let tx = card.transaction().unwrap();
-                let pkesk = Wrapped::try_from(stanza).unwrap().0;
+                let pkesk = PKESK::try_from(stanza).unwrap();
                 let sk = backend.decrypt_pkesk(tx, &pkesk, &|| {});
                 let mut fk = [0u8; 16];
-                fk.copy_from_slice(&sk.unwrap().1);
+                fk.copy_from_slice(&sk.unwrap());
                 file_keys.insert(index, Ok(FileKey::from(fk)));
                 break;
             }

@@ -4,7 +4,7 @@ use openpgp::crypto::SessionKey;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
-use openpgp::types::SymmetricAlgorithm;
+
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -22,6 +22,7 @@ use openpgp_card_sequoia::card::Open;
 use sequoia_openpgp as openpgp;
 
 pub mod agent;
+pub mod pkesk;
 
 #[derive(Default)]
 pub struct Backend {
@@ -88,18 +89,16 @@ impl Backend {
     pub fn decrypt_pkesk<'a>(
         &mut self,
         tx: OpenPgpTransaction,
-        pkesk: &openpgp::packet::PKESK,
+        pkesk: &crate::pkesk::PKESK,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<(SymmetricAlgorithm, SessionKey)> {
+    ) -> anyhow::Result<SessionKey> {
         let tx = self.verify_user(tx, false)?;
         let mut open = Open::new(tx)?;
         let mut decrypt = open
             .user_card()
             .ok_or_else(|| anyhow!("failed to open user card"))?;
-        let mut decryptor = decrypt.decryptor(touch_prompt)?;
-        pkesk
-            .decrypt(&mut decryptor, None)
-            .ok_or(anyhow!("failed to decrypt"))
+        let decryptor = decrypt.decryptor(touch_prompt)?;
+        pkesk.unwrap(decryptor)
     }
 
     pub fn decrypt<'a>(
