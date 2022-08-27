@@ -15,3 +15,5 @@ secrecy = "0.8.0"
 clap = { version = "3.2.12", features = [ "derive" ] }
 anyhow = "1.0"
 ssh-agent-lib = "0.2.5"
+age-core = "0.8.0"
+age-plugin = "0.3.0"
