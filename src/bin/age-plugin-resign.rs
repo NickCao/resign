@@ -5,6 +5,13 @@ use age_plugin::{
     run_state_machine, Callbacks,
 };
 use clap::Parser;
+use openpgp_card::OpenPgp;
+use secrecy::ExposeSecret;
+use sequoia_openpgp::{crypto::SessionKey, packet::key::PublicParts};
+use sequoia_openpgp::{
+    packet::{key::UnspecifiedRole, prelude::Key4, Key},
+    serialize::MarshalInto,
+};
 use std::collections::HashMap;
 use std::io;
 
@@ -21,21 +28,29 @@ struct Args {
 
 #[derive(Default)]
 struct RecipientPlugin {
-    recipients: Vec<Vec<u8>>,
+    recipients: Vec<Key<PublicParts, UnspecifiedRole>>,
     identities: Vec<Vec<u8>>,
 }
 
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
-        _index: usize,
+        index: usize,
         plugin_name: &str,
         bytes: &[u8],
     ) -> Result<(), recipient::Error> {
         if plugin_name != PLUGIN_NAME {
             unreachable!()
         }
-        self.recipients.push(bytes.to_vec());
+        let key: Key<_, UnspecifiedRole> = Key::V4(
+            Key4::import_public_cv25519(&bytes, None, None, None).map_err(|e| {
+                recipient::Error::Recipient {
+                    index,
+                    message: e.to_string(),
+                }
+            })?,
+        );
+        self.recipients.push(key);
         Ok(())
     }
 
@@ -54,10 +69,30 @@ impl RecipientPluginV1 for RecipientPlugin {
 
     fn wrap_file_keys(
         &mut self,
-        _file_keys: Vec<FileKey>,
+        file_keys: Vec<FileKey>,
         mut _callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
-        todo!()
+        Ok(file_keys
+            .into_iter()
+            .map(|file_key| {
+                self.recipients
+                    .iter()
+                    .map(|pk| {
+                        let data = SessionKey::from(file_key.expose_secret().as_slice());
+                        let ciphertext = pk.encrypt(&data).map_err(|e| {
+                            vec![recipient::Error::Internal {
+                                message: e.to_string(),
+                            }]
+                        })?;
+                        Ok(Stanza {
+                            tag: "resign".to_string(),
+                            args: vec![],
+                            body: ciphertext.to_vec().unwrap(),
+                        })
+                    })
+                    .collect()
+            })
+            .collect())
     }
 }
 
@@ -97,6 +132,20 @@ fn main() -> io::Result<()> {
             || RecipientPlugin::default(),
             || IdentityPlugin::default(),
         ),
-        None => Ok(()),
+        None => {
+            let mut backend = resign::Backend::default();
+            let mut card = backend.open().unwrap();
+            let mut card = OpenPgp::new(&mut card);
+            let mut tx = card.transaction().unwrap();
+            let ident = tx
+                .application_related_data()
+                .unwrap()
+                .application_id()
+                .unwrap()
+                .ident();
+            let pk = backend.decryption_key(tx).unwrap();
+            age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk);
+            Ok(())
+        }
     }
 }

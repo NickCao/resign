@@ -32,6 +32,20 @@ impl Backend {
             .ok_or_else(|| anyhow!("no card available"))
     }
 
+    pub fn decryption_key(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<Vec<u8>> {
+        let key = tx.public_key(KeyType::Decryption)?;
+        match key {
+            PublicKeyMaterial::E(ecc) => match ecc.algo() {
+                Algo::Ecc(attrs) => match attrs.curve() {
+                    Curve::Cv25519 => Ok(ecc.data().to_vec()),
+                    _ => unimplemented!(),
+                },
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn public(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
         let ident = tx.application_related_data()?.application_id()?.ident();
         let key = tx.public_key(KeyType::Authentication)?;
