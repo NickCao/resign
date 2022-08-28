@@ -81,24 +81,27 @@ impl RecipientPluginV1 for RecipientPlugin {
         file_keys: Vec<FileKey>,
         mut _callbacks: impl Callbacks<recipient::Error>,
     ) -> io::Result<Result<Vec<Vec<Stanza>>, Vec<recipient::Error>>> {
-        Ok(file_keys
-            .into_iter()
-            .map(|file_key| {
-                self.recipients
-                    .iter()
-                    .map(|pk| {
-                        Ok(PKESK::encrypt(&file_key, pk)
-                            .map_err(|e| {
-                                vec![recipient::Error::Internal {
-                                    message: e.to_string(),
-                                }]
-                            })?
-                            .try_into()
-                            .unwrap())
-                    })
-                    .collect()
-            })
-            .collect())
+        let mut errors = vec![];
+        let mut stanzas = vec![];
+        for file_key in &file_keys {
+            let mut wrapped = vec![];
+            for (index, recipient) in self.recipients.iter().enumerate() {
+                let stanza = PKESK::encrypt(file_key, recipient);
+                match stanza {
+                    Ok(stanza) => wrapped.push(stanza.try_into().unwrap()),
+                    Err(err) => errors.push(recipient::Error::Recipient {
+                        index,
+                        message: err.to_string(),
+                    }),
+                }
+            }
+            stanzas.push(wrapped);
+        }
+        if errors.len() > 0 {
+            Ok(Err(errors))
+        } else {
+            Ok(Ok(stanzas))
+        }
     }
 }
 
