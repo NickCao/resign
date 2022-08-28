@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use clap::Parser;
-use openpgp_card::KeyType;
 use sequoia_openpgp::{
     crypto::SessionKey,
     packet::{PKESK, SKESK},
@@ -43,14 +42,15 @@ impl DecryptionHelper for Resign {
     where
         D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool,
     {
-        let fp = self.backend.transaction(None, &|backend, tx| {
-            Ok(backend.public(tx, KeyType::Decryption)?.fingerprint())
-        })?;
         for i in pkesks {
             let sk = self.backend.transaction(None, &|backend, tx| {
-                Ok(backend.decrypt(tx, &|de| Ok(i.decrypt(de, sym_algo)), &|| {}))
+                Ok(backend.decrypt(
+                    tx,
+                    &|de| Ok((i.decrypt(de, sym_algo), de.public().fingerprint())),
+                    &|| {},
+                ))
             });
-            if let Ok(Ok(Some((algo, sk)))) = sk {
+            if let Ok(Ok((Some((algo, sk)), fp))) = sk {
                 if decrypt(algo, &sk) {
                     return Ok(Some(fp));
                 };
