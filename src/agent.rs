@@ -1,9 +1,6 @@
-
 use ssh_agent_lib::proto::Identity;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-
 
 #[derive(Default, Clone)]
 pub struct Agent {
@@ -22,7 +19,7 @@ impl ssh_agent_lib::Agent for Agent {
                     .backend
                     .lock()
                     .unwrap()
-                    .transaction(&|backend, tx| backend.public(tx))?;
+                    .transaction(None, &|backend, tx| backend.public(tx))?;
                 Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(vec![
                     Identity {
                         pubkey_blob,
@@ -35,7 +32,7 @@ impl ssh_agent_lib::Agent for Agent {
                     .backend
                     .lock()
                     .unwrap()
-                    .transaction(&|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
+                    .transaction(None, &|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
                 Ok(ssh_agent_lib::proto::Message::SignResponse(signature))
             }
             _ => Ok(ssh_agent_lib::proto::Message::Failure),

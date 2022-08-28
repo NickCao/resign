@@ -7,6 +7,7 @@ use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
 
 use openpgp_card::OpenPgp;
+use openpgp_card_pcsc::PcscBackend;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -32,17 +33,20 @@ pub struct Backend {
 impl Backend {
     pub fn transaction<T>(
         &mut self,
-        apply: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
+        ident: Option<&str>,
+        operation: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {
-        let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        let mut card = cards
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("no card available"))?;
+        let mut card = match ident {
+            Some(ident) => PcscBackend::open_by_ident(ident, None)?,
+            None => PcscBackend::cards(None)?
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow!("no card available"))?,
+        };
         let mut card = OpenPgp::new(&mut card);
         let tx = card.transaction()?;
         let tx = Open::new(tx)?;
-        apply(self, tx)
+        operation(self, tx)
     }
 
     pub fn public_raw(
