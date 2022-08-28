@@ -66,7 +66,7 @@ impl RecipientPluginV1 for RecipientPlugin {
             message: e.to_string(),
         })?;
         let pubkey = Backend::default().transaction(Some(&ident), &|backend, tx| {
-            backend.public(tx, KeyType::Authentication)
+            backend.public(tx, KeyType::Decryption)
         });
         let pubkey = pubkey.map_err(|e| recipient::Error::Identity {
             index,
