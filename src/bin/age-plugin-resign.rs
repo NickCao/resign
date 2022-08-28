@@ -147,7 +147,7 @@ fn main() -> io::Result<()> {
             let (ident, pk) = resign::Backend::default()
                 .transaction(None, &|backend, tx| {
                     let ident = tx.application_identifier()?.ident();
-                    let pk = backend.public_raw(tx, openpgp_card::KeyType::Decryption)?;
+                    let pk = backend.public(tx, openpgp_card::KeyType::Decryption)?;
                     Ok((ident, pk))
                 })
                 .unwrap();

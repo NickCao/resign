@@ -15,8 +15,8 @@ use ssh_agent_lib::proto::Blob;
 
 use openpgp::crypto::Signer as _;
 use openpgp::types::HashAlgorithm;
-use openpgp_card::algorithm::{Algo, Curve};
-use openpgp_card::crypto_data::PublicKeyMaterial;
+
+
 use openpgp_card::KeyType;
 
 use openpgp_card_sequoia::card::Open;
@@ -49,35 +49,13 @@ impl Backend {
         operation(self, tx)
     }
 
-    pub fn public_raw(
+    pub fn public(
         &mut self,
         mut tx: Open,
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         openpgp_card_sequoia::util::key_slot(&mut tx, key_type)?
             .ok_or_else(|| anyhow!("no key matching key type"))
-    }
-
-    pub fn public(&mut self, mut tx: Open) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        let ident = tx.application_identifier()?.ident();
-        let key = tx.public_key(KeyType::Authentication)?;
-        let key_blob = match key {
-            PublicKeyMaterial::E(ecc) => match ecc.algo() {
-                Algo::Ecc(attrs) => match attrs.curve() {
-                    Curve::Ed25519 => {
-                        let mut blob = vec![0, 0, 0, 0xb];
-                        blob.extend(b"ssh-ed25519");
-                        blob.extend(vec![0, 0, 0, 0x20]);
-                        blob.extend(ecc.data().to_vec());
-                        blob
-                    }
-                    _ => unimplemented!(),
-                },
-                _ => unimplemented!(),
-            },
-            _ => unimplemented!(),
-        };
-        Ok((key_blob, ident.as_bytes().to_vec()))
     }
 
     pub fn decrypt<'a>(
