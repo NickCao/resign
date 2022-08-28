@@ -153,13 +153,9 @@ fn main() -> io::Result<()> {
             let mut backend = resign::Backend::default();
             let mut card = backend.open().unwrap();
             let mut card = OpenPgp::new(&mut card);
-            let mut tx = card.transaction().unwrap();
-            let ident = tx
-                .application_related_data()
-                .unwrap()
-                .application_id()
-                .unwrap()
-                .ident();
+            let tx = card.transaction().unwrap();
+            let tx = Open::new(tx).unwrap();
+            let ident = tx.application_identifier().unwrap().ident();
             let pk = backend
                 .public_raw(tx, openpgp_card::KeyType::Decryption)
                 .unwrap();

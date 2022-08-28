@@ -2,12 +2,11 @@ use age_core::format::FileKey;
 use anyhow::anyhow;
 
 use openpgp::crypto::mpi;
-use openpgp::crypto::SessionKey;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
 
-use openpgp::serialize::MarshalInto;
+use openpgp_card::OpenPgp;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -19,7 +18,6 @@ use openpgp::types::HashAlgorithm;
 use openpgp_card::algorithm::{Algo, Curve};
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
-use openpgp_card::OpenPgpTransaction;
 use openpgp_card_pcsc::PcscBackend;
 use openpgp_card_sequoia::card::Open;
 use sequoia_openpgp as openpgp;
@@ -43,16 +41,15 @@ impl Backend {
 
     pub fn public_raw(
         &mut self,
-        tx: OpenPgpTransaction,
+        mut tx: Open,
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
-        let mut open = Open::new(tx)?;
-        openpgp_card_sequoia::util::key_slot(&mut open, key_type)?
+        openpgp_card_sequoia::util::key_slot(&mut tx, key_type)?
             .ok_or_else(|| anyhow!("no key matching key type"))
     }
 
-    pub fn public(&mut self, mut tx: OpenPgpTransaction) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-        let ident = tx.application_related_data()?.application_id()?.ident();
+    pub fn public(&mut self, mut tx: Open) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        let ident = tx.application_identifier()?.ident();
         let key = tx.public_key(KeyType::Authentication)?;
         let key_blob = match key {
             PublicKeyMaterial::E(ecc) => match ecc.algo() {

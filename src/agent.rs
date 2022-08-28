@@ -22,6 +22,7 @@ impl ssh_agent_lib::Agent for Agent {
                 let mut card = backend.open()?;
                 let mut card = OpenPgp::new(&mut card);
                 let tx = card.transaction()?;
+                let tx = Open::new(tx)?;
                 let (pubkey_blob, comment) = backend.public(tx)?;
                 Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(vec![
                     Identity {
