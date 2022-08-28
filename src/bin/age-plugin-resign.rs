@@ -85,19 +85,18 @@ impl RecipientPluginV1 for RecipientPlugin {
         let mut stanzas = vec![];
         for file_key in &file_keys {
             let mut wrapped = vec![];
-            for (index, recipient) in self.recipients.iter().enumerate() {
+            for recipient in &self.recipients {
                 let stanza = PKESK::encrypt(file_key, recipient);
                 match stanza {
                     Ok(stanza) => wrapped.push(stanza.try_into().unwrap()),
-                    Err(err) => errors.push(recipient::Error::Recipient {
-                        index,
+                    Err(err) => errors.push(recipient::Error::Internal {
                         message: err.to_string(),
                     }),
                 }
             }
             stanzas.push(wrapped);
         }
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             Ok(Err(errors))
         } else {
             Ok(Ok(stanzas))
@@ -107,20 +106,24 @@ impl RecipientPluginV1 for RecipientPlugin {
 
 #[derive(Default)]
 struct IdentityPlugin {
-    identities: Vec<Vec<u8>>,
+    identities: Vec<String>,
 }
 
 impl IdentityPluginV1 for IdentityPlugin {
     fn add_identity(
         &mut self,
-        _index: usize,
+        index: usize,
         plugin_name: &str,
         bytes: &[u8],
     ) -> Result<(), identity::Error> {
         if plugin_name != PLUGIN_NAME {
             unreachable!()
         }
-        self.identities.push(bytes.to_vec());
+        let ident = String::from_utf8(bytes.to_vec()).map_err(|e| identity::Error::Identity {
+            index,
+            message: e.to_string(),
+        })?;
+        self.identities.push(ident);
         Ok(())
     }
 
@@ -130,46 +133,38 @@ impl IdentityPluginV1 for IdentityPlugin {
         mut _callbacks: impl Callbacks<identity::Error>,
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         let mut file_keys = HashMap::new();
-        let mut backend = resign::Backend::default();
-        for (index, file) in files.into_iter().enumerate() {
-            for stanza in file {
-                PKESK::try_from(stanza)
-                    .map(|s| -> anyhow::Result<()> {
-                        let file_key = backend
-                            .transaction(None, &|backend, tx| {
-                                backend.decrypt(tx, &|de| s.decrypt(de), &|| {})
-                            })
-                            .unwrap();
-                        file_keys.insert(index, Ok(file_key));
-                        Ok(())
-                    })
-                    .unwrap()
-                    .unwrap();
-                // TODO: handle failures
+        for identity in &self.identities {
+            let mut backend = resign::Backend::default();
+            for (index, file) in files.iter().enumerate() {
+                for stanza in file {
+                    if let Ok(pkesk) = PKESK::try_from(stanza) {
+                        let file_key = backend.transaction(Some(identity), &|backend, tx| {
+                            backend.decrypt(tx, &|de| pkesk.decrypt(de), &|| {})
+                        });
+                        if let Ok(file_key) = file_key {
+                            file_keys.insert(index, Ok(file_key));
+                        }
+                    }
+                }
             }
         }
         Ok(file_keys)
     }
 }
 
-fn main() -> io::Result<()> {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.age_plugin {
-        Some(state_machine) => run_state_machine(
+        Some(state_machine) => Ok(run_state_machine(
             &state_machine,
             RecipientPlugin::default,
             IdentityPlugin::default,
-        ),
-        None => {
-            let (ident, pk) = resign::Backend::default()
-                .transaction(None, &|backend, tx| {
-                    let ident = tx.application_identifier()?.ident();
-                    let pk = backend.public(tx, openpgp_card::KeyType::Decryption)?;
-                    Ok((ident, pk))
-                })
-                .unwrap();
-            age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk.to_vec().unwrap());
+        )?),
+        None => resign::Backend::default().transaction(None, &|backend, tx| {
+            let ident = tx.application_identifier()?.ident();
+            let pk = backend.public(tx, openpgp_card::KeyType::Decryption)?;
+            age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk.to_vec()?);
             Ok(())
-        }
+        }),
     }
 }

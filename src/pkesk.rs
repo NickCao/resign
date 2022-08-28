@@ -35,9 +35,9 @@ impl PKESK {
     }
 }
 
-impl TryFrom<Stanza> for PKESK {
+impl TryFrom<&Stanza> for PKESK {
     type Error = io::Error;
-    fn try_from(value: Stanza) -> Result<Self, Self::Error> {
+    fn try_from(value: &Stanza) -> Result<Self, Self::Error> {
         if value.tag != STANZA_TAG || !value.args.is_empty() {
             return Err(io::Error::new(io::ErrorKind::Other, "invalid stanza"));
         }
