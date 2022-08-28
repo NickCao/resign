@@ -30,7 +30,7 @@ impl ssh_agent_lib::Agent for Agent {
                             Ok((pubkey, comment))
                         })?;
                 Ok(Message::IdentitiesAnswer(vec![Identity {
-                    pubkey_blob: encode_pubkey(&pubkey).unwrap(),
+                    pubkey_blob: encode_pubkey(&pubkey)?,
                     comment,
                 }]))
             }
@@ -73,7 +73,7 @@ pub fn encode_pubkey(key: &PublicKey) -> anyhow::Result<Vec<u8>> {
             curve: Curve::Ed25519,
             q,
         } => {
-            let points = q.decode_point(&Curve::Ed25519).unwrap();
+            let points = q.decode_point(&Curve::Ed25519)?;
             let mut blob = vec![0, 0, 0, 0xb];
             blob.extend(b"ssh-ed25519");
             blob.extend(vec![0, 0, 0, 0x20]);
