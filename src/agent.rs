@@ -1,3 +1,4 @@
+use openpgp_card_sequoia::card::Open;
 use ssh_agent_lib::proto::Identity;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -34,7 +35,8 @@ impl ssh_agent_lib::Agent for Agent {
                 let mut card = backend.open()?;
                 let mut card = OpenPgp::new(&mut card);
                 let tx = card.transaction()?;
-                let signature = backend.auth(tx, &request.data)?;
+                let tx = Open::new(tx)?;
+                let signature = backend.auth(tx, &request.data, &|| {})?;
                 Ok(ssh_agent_lib::proto::Message::SignResponse(signature))
             }
             _ => Ok(ssh_agent_lib::proto::Message::Failure),

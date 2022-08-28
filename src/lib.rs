@@ -1,10 +1,13 @@
+use age_core::format::FileKey;
 use anyhow::anyhow;
 
+use openpgp::crypto::mpi;
 use openpgp::crypto::SessionKey;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
 
+use openpgp::serialize::MarshalInto;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -72,14 +75,13 @@ impl Backend {
 
     pub fn sign<'a>(
         &mut self,
-        tx: OpenPgpTransaction,
+        tx: Open,
         hash_algo: HashAlgorithm,
         digest: &[u8],
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<openpgp::crypto::mpi::Signature> {
-        let tx = self.verify_user(tx, true)?;
-        let mut open = Open::new(tx)?;
-        let mut sign = open
+        let mut tx = self.verify_user(tx, true)?;
+        let mut sign = tx
             .signing_card()
             .ok_or_else(|| anyhow!("failed to open signing card"))?;
         let mut signer = sign.signer(touch_prompt)?;
@@ -88,13 +90,12 @@ impl Backend {
 
     pub fn decrypt_pkesk<'a>(
         &mut self,
-        tx: OpenPgpTransaction,
+        tx: Open,
         pkesk: &crate::pkesk::PKESK,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<SessionKey> {
-        let tx = self.verify_user(tx, false)?;
-        let mut open = Open::new(tx)?;
-        let mut decrypt = open
+    ) -> anyhow::Result<FileKey> {
+        let mut tx = self.verify_user(tx, false)?;
+        let mut decrypt = tx
             .user_card()
             .ok_or_else(|| anyhow!("failed to open user card"))?;
         let decryptor = decrypt.decryptor(touch_prompt)?;
@@ -103,24 +104,35 @@ impl Backend {
 
     pub fn decrypt<'a>(
         &mut self,
-        tx: OpenPgpTransaction,
+        tx: Open,
         ciphertext: &openpgp::crypto::mpi::Ciphertext,
         plaintext_len: Option<usize>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<openpgp::crypto::SessionKey> {
-        let tx = self.verify_user(tx, false)?;
-        let mut open = Open::new(tx)?;
-        let mut decrypt = open
+        let mut tx = self.verify_user(tx, false)?;
+        let mut decrypt = tx
             .user_card()
             .ok_or_else(|| anyhow!("failed to open user card"))?;
         let mut decryptor = decrypt.decryptor(touch_prompt)?;
         decryptor.decrypt(ciphertext, plaintext_len)
     }
 
-    pub fn auth(&mut self, tx: OpenPgpTransaction, data: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let hash = openpgp_card::crypto_data::Hash::EdDSA(data);
+    pub fn auth<'a>(
+        &mut self,
+        tx: Open,
+        data: &[u8],
+        touch_prompt: &'a (dyn Fn() + Send + Sync),
+    ) -> anyhow::Result<Vec<u8>> {
         let mut tx = self.verify_user(tx, false)?;
-        let blob = tx.authenticate_for_hash(hash)?;
+        let blob = tx
+            .user_card()
+            .unwrap()
+            .authenticator(touch_prompt)?
+            .sign(HashAlgorithm::Unknown(0), data)?;
+        let blob = match blob {
+            mpi::Signature::EdDSA { r, s } => [r.value(), s.value()].concat(),
+            _ => unimplemented!(),
+        };
         Ok(ssh_agent_lib::proto::Signature {
             algorithm: "ssh-ed25519".to_string(),
             blob,
@@ -128,12 +140,8 @@ impl Backend {
         .to_blob()?)
     }
 
-    fn verify_user<'a>(
-        &mut self,
-        mut tx: OpenPgpTransaction<'a>,
-        signing: bool,
-    ) -> anyhow::Result<OpenPgpTransaction<'a>> {
-        let ident = tx.application_related_data()?.application_id()?.ident();
+    fn verify_user<'a>(&mut self, mut tx: Open<'a>, signing: bool) -> anyhow::Result<Open<'a>> {
+        let ident = tx.application_identifier()?.ident();
 
         let pin = match &self.pin {
             Some(pin) => pin.clone(),
@@ -150,9 +158,9 @@ impl Backend {
         };
 
         let verify = if signing {
-            tx.verify_pw1_sign(pin.expose_secret().as_bytes())
+            tx.verify_user_for_signing(pin.expose_secret().as_bytes())
         } else {
-            tx.verify_pw1_user(pin.expose_secret().as_bytes())
+            tx.verify_user(pin.expose_secret().as_bytes())
         };
         match verify {
             Ok(()) => {

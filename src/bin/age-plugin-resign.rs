@@ -6,10 +6,8 @@ use age_plugin::{
 };
 use clap::Parser;
 use openpgp_card::OpenPgp;
+use openpgp_card_sequoia::card::Open;
 use resign::pkesk::PKESK;
-
-
-
 
 use sequoia_openpgp::{packet::key::PublicParts, parse::Parse};
 use sequoia_openpgp::{
@@ -20,7 +18,6 @@ use std::io;
 use std::{collections::HashMap, vec};
 
 const PLUGIN_NAME: &str = "resign";
-const STANZA_TAG: &str = "resign-pkesk-v1";
 
 /// age-plugin-resign
 #[derive(Parser, Debug)]
@@ -122,19 +119,21 @@ impl IdentityPluginV1 for IdentityPlugin {
         let mut backend = resign::Backend::default();
         let mut card = backend
             .open()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         let mut card = OpenPgp::new(&mut card);
         for (index, file) in files.into_iter().enumerate() {
             for stanza in file {
-                if stanza.tag != "resign" {
-                    continue;
-                }
-                let tx = card.transaction().unwrap();
-                let pkesk = PKESK::try_from(stanza).unwrap();
-                let sk = backend.decrypt_pkesk(tx, &pkesk, &|| {});
-                let mut fk = [0u8; 16];
-                fk.copy_from_slice(&sk.unwrap());
-                file_keys.insert(index, Ok(FileKey::from(fk)));
+                PKESK::try_from(stanza)
+                    .map(|s| -> anyhow::Result<()> {
+                        let tx = card.transaction()?;
+                        let tx = Open::new(tx)?;
+                        let file_key = backend.decrypt_pkesk(tx, &s, &|| {})?;
+                        file_keys.insert(index, Ok(file_key));
+                        Ok(())
+                    })
+                    .unwrap()
+                    .unwrap();
+
                 break;
             }
         }
