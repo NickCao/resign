@@ -127,7 +127,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                     .map(|s| -> anyhow::Result<()> {
                         let tx = card.transaction()?;
                         let tx = Open::new(tx)?;
-                        let file_key = backend.decrypt_pkesk(tx, &s, &|| {})?;
+                        let file_key = backend.decrypt(tx, &s, &|| {})?;
                         file_keys.insert(index, Ok(file_key));
                         Ok(())
                     })

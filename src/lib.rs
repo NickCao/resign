@@ -85,7 +85,7 @@ impl Backend {
         signer.sign(hash_algo, digest)
     }
 
-    pub fn decrypt_pkesk<'a>(
+    pub fn decrypt<'a>(
         &mut self,
         tx: Open,
         pkesk: &crate::pkesk::PKESK,
@@ -97,21 +97,6 @@ impl Backend {
             .ok_or_else(|| anyhow!("failed to open user card"))?;
         let decryptor = decrypt.decryptor(touch_prompt)?;
         pkesk.unwrap(decryptor)
-    }
-
-    pub fn decrypt<'a>(
-        &mut self,
-        tx: Open,
-        ciphertext: &openpgp::crypto::mpi::Ciphertext,
-        plaintext_len: Option<usize>,
-        touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<openpgp::crypto::SessionKey> {
-        let mut tx = self.verify_user(tx, false)?;
-        let mut decrypt = tx
-            .user_card()
-            .ok_or_else(|| anyhow!("failed to open user card"))?;
-        let mut decryptor = decrypt.decryptor(touch_prompt)?;
-        decryptor.decrypt(ciphertext, plaintext_len)
     }
 
     pub fn auth<'a>(
