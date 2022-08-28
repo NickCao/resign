@@ -1,4 +1,5 @@
 use openpgp_card::KeyType;
+use sequoia_openpgp::crypto::mpi;
 use sequoia_openpgp::crypto::mpi::PublicKey;
 use sequoia_openpgp::types::Curve;
 use sequoia_openpgp::types::HashAlgorithm;
@@ -39,7 +40,19 @@ impl ssh_agent_lib::Agent for Agent {
                         .lock()
                         .unwrap()
                         .transaction(None, &|backend, tx| {
-                            backend.auth(tx, HashAlgorithm::Unknown(0), &request.data, &|| {})
+                            backend.auth(
+                                tx,
+                                &|au| {
+                                    let sig = au.sign(HashAlgorithm::Unknown(0), &request.data)?;
+                                    match sig {
+                                        mpi::Signature::EdDSA { r, s } => {
+                                            Ok([r.value(), s.value()].concat())
+                                        }
+                                        _ => unimplemented!(),
+                                    }
+                                },
+                                &|| {},
+                            )
                         })?;
                 Ok(Message::SignResponse(
                     Signature {

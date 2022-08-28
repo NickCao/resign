@@ -1,12 +1,11 @@
-
 use anyhow::anyhow;
-use openpgp::crypto::mpi;
+
 use openpgp::crypto::Decryptor;
-use openpgp::crypto::Signer as _;
+use openpgp::crypto::Signer;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
-use openpgp::types::HashAlgorithm;
+
 use openpgp_card::KeyType;
 use openpgp_card::OpenPgp;
 use openpgp_card_pcsc::PcscBackend;
@@ -64,23 +63,16 @@ impl Backend {
         operation(&mut decryptor)
     }
 
-    pub fn auth<'a>(
+    pub fn auth<'a, T>(
         &mut self,
         tx: Open,
-        hash_algo: HashAlgorithm,
-        data: &[u8],
+        operation: &dyn Fn(&mut dyn Signer) -> anyhow::Result<T>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<T> {
         let mut tx = self.verify_user(tx, false)?;
-        let blob = tx
-            .user_card()
-            .unwrap()
-            .authenticator(touch_prompt)?
-            .sign(hash_algo, data)?;
-        Ok(match blob {
-            mpi::Signature::EdDSA { r, s } => [r.value(), s.value()].concat(),
-            _ => unimplemented!(),
-        })
+        let mut card = tx.user_card().unwrap();
+        let mut authenticator = card.authenticator(touch_prompt)?;
+        operation(&mut authenticator)
     }
 
     fn verify_user<'a>(&mut self, mut tx: Open<'a>, signing: bool) -> anyhow::Result<Open<'a>> {
