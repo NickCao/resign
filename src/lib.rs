@@ -6,6 +6,7 @@ use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
 
+use openpgp_card::OpenPgp;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -16,7 +17,7 @@ use openpgp::types::HashAlgorithm;
 use openpgp_card::algorithm::{Algo, Curve};
 use openpgp_card::crypto_data::PublicKeyMaterial;
 use openpgp_card::KeyType;
-use openpgp_card_pcsc::PcscBackend;
+
 use openpgp_card_sequoia::card::Open;
 use sequoia_openpgp as openpgp;
 
@@ -29,12 +30,19 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn open(&mut self) -> anyhow::Result<PcscBackend> {
+    pub fn open<T>(
+        &mut self,
+        apply: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
         let cards = openpgp_card_pcsc::PcscBackend::cards(None)?;
-        cards
+        let mut card = cards
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow!("no card available"))
+            .ok_or_else(|| anyhow!("no card available"))?;
+        let mut card = OpenPgp::new(&mut card);
+        let tx = card.transaction()?;
+        let tx = Open::new(tx)?;
+        apply(self, tx)
     }
 
     pub fn public_raw(

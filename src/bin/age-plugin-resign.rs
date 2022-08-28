@@ -5,8 +5,6 @@ use age_plugin::{
     run_state_machine, Callbacks,
 };
 use clap::Parser;
-use openpgp_card::OpenPgp;
-use openpgp_card_sequoia::card::Open;
 use resign::pkesk::PKESK;
 
 use sequoia_openpgp::{packet::key::PublicParts, parse::Parse};
@@ -117,17 +115,13 @@ impl IdentityPluginV1 for IdentityPlugin {
     ) -> io::Result<HashMap<usize, Result<FileKey, Vec<identity::Error>>>> {
         let mut file_keys = HashMap::new();
         let mut backend = resign::Backend::default();
-        let mut card = backend
-            .open()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let mut card = OpenPgp::new(&mut card);
         for (index, file) in files.into_iter().enumerate() {
             for stanza in file {
                 PKESK::try_from(stanza)
                     .map(|s| -> anyhow::Result<()> {
-                        let tx = card.transaction()?;
-                        let tx = Open::new(tx)?;
-                        let file_key = backend.decrypt(tx, &s, &|| {})?;
+                        let file_key = backend
+                            .open(&|backend, tx| backend.decrypt(tx, &s, &|| {}))
+                            .unwrap();
                         file_keys.insert(index, Ok(file_key));
                         Ok(())
                     })
@@ -150,14 +144,12 @@ fn main() -> io::Result<()> {
             IdentityPlugin::default,
         ),
         None => {
-            let mut backend = resign::Backend::default();
-            let mut card = backend.open().unwrap();
-            let mut card = OpenPgp::new(&mut card);
-            let tx = card.transaction().unwrap();
-            let tx = Open::new(tx).unwrap();
-            let ident = tx.application_identifier().unwrap().ident();
-            let pk = backend
-                .public_raw(tx, openpgp_card::KeyType::Decryption)
+            let (ident, pk) = resign::Backend::default()
+                .open(&|backend, tx| {
+                    let ident = tx.application_identifier()?.ident();
+                    let pk = backend.public_raw(tx, openpgp_card::KeyType::Decryption)?;
+                    Ok((ident, pk))
+                })
                 .unwrap();
             age_plugin::print_new_identity(PLUGIN_NAME, ident.as_bytes(), &pk.to_vec().unwrap());
             Ok(())

@@ -1,9 +1,9 @@
-use openpgp_card_sequoia::card::Open;
+
 use ssh_agent_lib::proto::Identity;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openpgp_card::OpenPgp;
+
 
 #[derive(Default, Clone)]
 pub struct Agent {
@@ -18,12 +18,11 @@ impl ssh_agent_lib::Agent for Agent {
     ) -> Result<ssh_agent_lib::proto::Message, Self::Error> {
         match request {
             ssh_agent_lib::proto::Message::RequestIdentities => {
-                let mut backend = self.backend.lock().unwrap();
-                let mut card = backend.open()?;
-                let mut card = OpenPgp::new(&mut card);
-                let tx = card.transaction()?;
-                let tx = Open::new(tx)?;
-                let (pubkey_blob, comment) = backend.public(tx)?;
+                let (pubkey_blob, comment) = self
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .open(&|backend, tx| backend.public(tx))?;
                 Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(vec![
                     Identity {
                         pubkey_blob,
@@ -32,12 +31,11 @@ impl ssh_agent_lib::Agent for Agent {
                 ]))
             }
             ssh_agent_lib::proto::Message::SignRequest(request) => {
-                let mut backend = self.backend.lock().unwrap();
-                let mut card = backend.open()?;
-                let mut card = OpenPgp::new(&mut card);
-                let tx = card.transaction()?;
-                let tx = Open::new(tx)?;
-                let signature = backend.auth(tx, &request.data, &|| {})?;
+                let signature = self
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .open(&|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
                 Ok(ssh_agent_lib::proto::Message::SignResponse(signature))
             }
             _ => Ok(ssh_agent_lib::proto::Message::Failure),
