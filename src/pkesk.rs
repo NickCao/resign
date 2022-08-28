@@ -20,7 +20,7 @@ impl PKESK {
     ) -> anyhow::Result<Self> {
         let data = SessionKey::from(file_key.expose_secret().as_slice());
         let pkesk = PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, rcpt)?;
-        Ok(PKESK(packet::PKESK::V3(pkesk)).try_into()?)
+        Ok(PKESK(packet::PKESK::V3(pkesk)))
     }
     pub fn unwrap<T: Decryptor>(&self, mut decryptor: T) -> anyhow::Result<FileKey> {
         let session_key = self.0.decrypt(&mut decryptor, None).unwrap().1; // FIXME: check decryption error

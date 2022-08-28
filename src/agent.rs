@@ -47,16 +47,16 @@ impl ssh_agent_lib::Agent for Agent {
 
 pub fn encode_pubkey(key: &PublicKey) -> anyhow::Result<Vec<u8>> {
     let blob = match key {
-        PublicKey::ECDSA { curve, q } => match curve {
-            Curve::Ed25519 => {
-                let mut blob = vec![0, 0, 0, 0xb];
-                blob.extend(b"ssh-ed25519");
-                blob.extend(vec![0, 0, 0, 0x20]);
-                blob.extend(q.value());
-                blob
-            }
-            _ => unimplemented!(),
-        },
+        PublicKey::ECDSA {
+            curve: Curve::Ed25519,
+            q,
+        } => {
+            let mut blob = vec![0, 0, 0, 0xb];
+            blob.extend(b"ssh-ed25519");
+            blob.extend(vec![0, 0, 0, 0x20]);
+            blob.extend(q.value());
+            blob
+        }
         _ => unimplemented!(),
     };
     Ok(blob)

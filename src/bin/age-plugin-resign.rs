@@ -127,8 +127,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                     })
                     .unwrap()
                     .unwrap();
-
-                break;
+                // TODO: handle failures
             }
         }
         Ok(file_keys)

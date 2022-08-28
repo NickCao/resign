@@ -1,26 +1,20 @@
 use age_core::format::FileKey;
 use anyhow::anyhow;
-
 use openpgp::crypto::mpi;
+use openpgp::crypto::Signer as _;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
-
+use openpgp::types::HashAlgorithm;
+use openpgp_card::KeyType;
 use openpgp_card::OpenPgp;
 use openpgp_card_pcsc::PcscBackend;
+use openpgp_card_sequoia::card::Open;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
-use ssh_agent_lib::proto::Blob;
-
-use openpgp::crypto::Signer as _;
-use openpgp::types::HashAlgorithm;
-
-
-use openpgp_card::KeyType;
-
-use openpgp_card_sequoia::card::Open;
 use sequoia_openpgp as openpgp;
+use ssh_agent_lib::proto::Blob;
 
 pub mod agent;
 pub mod pkesk;
