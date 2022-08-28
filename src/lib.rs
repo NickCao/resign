@@ -6,13 +6,11 @@ use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 use openpgp::packet::prelude::Key;
 
-use openpgp_card::OpenPgp;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use ssh_agent_lib::proto::Blob;
 
-use openpgp::crypto::Decryptor as _;
 use openpgp::crypto::Signer as _;
 use openpgp::types::HashAlgorithm;
 use openpgp_card::algorithm::{Algo, Curve};
@@ -68,21 +66,6 @@ impl Backend {
             _ => unimplemented!(),
         };
         Ok((key_blob, ident.as_bytes().to_vec()))
-    }
-
-    pub fn sign<'a>(
-        &mut self,
-        tx: Open,
-        hash_algo: HashAlgorithm,
-        digest: &[u8],
-        touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<openpgp::crypto::mpi::Signature> {
-        let mut tx = self.verify_user(tx, true)?;
-        let mut sign = tx
-            .signing_card()
-            .ok_or_else(|| anyhow!("failed to open signing card"))?;
-        let mut signer = sign.signer(touch_prompt)?;
-        signer.sign(hash_algo, digest)
     }
 
     pub fn decrypt<'a>(
