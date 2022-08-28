@@ -5,15 +5,17 @@ use age_plugin::{
     run_state_machine, Callbacks,
 };
 use clap::Parser;
-use resign::pkesk::PKESK;
-
-use sequoia_openpgp::{packet::key::PublicParts, parse::Parse};
+use openpgp_card::KeyType;
+use resign::{pkesk::PKESK, Backend};
 use sequoia_openpgp::{
-    packet::{key::UnspecifiedRole, Key},
+    packet::{
+        key::{PublicParts, UnspecifiedRole},
+        Key,
+    },
+    parse::Parse,
     serialize::MarshalInto,
 };
-use std::io;
-use std::{collections::HashMap, vec};
+use std::{collections::HashMap, io, vec};
 
 const PLUGIN_NAME: &str = "resign";
 
@@ -29,37 +31,48 @@ struct Args {
 #[derive(Default)]
 struct RecipientPlugin {
     recipients: Vec<Key<PublicParts, UnspecifiedRole>>,
-    identities: Vec<Vec<u8>>,
 }
 
 impl RecipientPluginV1 for RecipientPlugin {
     fn add_recipient(
         &mut self,
-        _index: usize,
+        index: usize,
         plugin_name: &str,
         bytes: &[u8],
     ) -> Result<(), recipient::Error> {
         if plugin_name != PLUGIN_NAME {
             unreachable!()
         }
-        let key = Key::from_bytes(&bytes)
-            .unwrap()
-            .parts_as_public()
-            .to_owned();
-        self.recipients.push(key);
+        let pubkey = Key::from_bytes(&bytes).map_err(|e| recipient::Error::Recipient {
+            index,
+            message: e.to_string(),
+        })?;
+        let pubkey = pubkey.parts_as_public().to_owned();
+        self.recipients.push(pubkey);
         Ok(())
     }
 
     fn add_identity(
         &mut self,
-        _index: usize,
+        index: usize,
         plugin_name: &str,
         bytes: &[u8],
     ) -> Result<(), recipient::Error> {
         if plugin_name != PLUGIN_NAME {
             unreachable!()
         }
-        self.identities.push(bytes.to_vec());
+        let ident = String::from_utf8(bytes.to_vec()).map_err(|e| recipient::Error::Identity {
+            index,
+            message: e.to_string(),
+        })?;
+        let pubkey = Backend::default().transaction(Some(&ident), &|backend, tx| {
+            backend.public(tx, KeyType::Authentication)
+        });
+        let pubkey = pubkey.map_err(|e| recipient::Error::Identity {
+            index,
+            message: e.to_string(),
+        })?;
+        self.recipients.push(pubkey);
         Ok(())
     }
 
