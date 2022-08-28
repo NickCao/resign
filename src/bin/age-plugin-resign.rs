@@ -120,7 +120,9 @@ impl IdentityPluginV1 for IdentityPlugin {
                 PKESK::try_from(stanza)
                     .map(|s| -> anyhow::Result<()> {
                         let file_key = backend
-                            .transaction(None, &|backend, tx| backend.decrypt(tx, &s, &|| {}))
+                            .transaction(None, &|backend, tx| {
+                                backend.decrypt(tx, &|de| s.unwrap(de), &|| {})
+                            })
                             .unwrap();
                         file_keys.insert(index, Ok(file_key));
                         Ok(())

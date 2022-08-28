@@ -1,6 +1,7 @@
-use age_core::format::FileKey;
+
 use anyhow::anyhow;
 use openpgp::crypto::mpi;
+use openpgp::crypto::Decryptor;
 use openpgp::crypto::Signer as _;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
@@ -14,7 +15,6 @@ use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use sequoia_openpgp as openpgp;
-
 
 pub mod agent;
 pub mod pkesk;
@@ -52,18 +52,16 @@ impl Backend {
             .ok_or_else(|| anyhow!("no key matching key type"))
     }
 
-    pub fn decrypt<'a>(
+    pub fn decrypt<'a, T>(
         &mut self,
         tx: Open,
-        pkesk: &crate::pkesk::PKESK,
+        operation: &dyn Fn(&mut dyn Decryptor) -> anyhow::Result<T>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
-    ) -> anyhow::Result<FileKey> {
+    ) -> anyhow::Result<T> {
         let mut tx = self.verify_user(tx, false)?;
-        let mut decrypt = tx
-            .user_card()
-            .ok_or_else(|| anyhow!("failed to open user card"))?;
-        let decryptor = decrypt.decryptor(touch_prompt)?;
-        pkesk.unwrap(decryptor)
+        let mut card = tx.user_card().unwrap();
+        let mut decryptor = card.decryptor(touch_prompt)?;
+        operation(&mut decryptor)
     }
 
     pub fn auth<'a>(

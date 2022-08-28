@@ -22,8 +22,8 @@ impl PKESK {
         let pkesk = PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, rcpt)?;
         Ok(PKESK(packet::PKESK::V3(pkesk)))
     }
-    pub fn unwrap<T: Decryptor>(&self, mut decryptor: T) -> anyhow::Result<FileKey> {
-        let session_key = self.0.decrypt(&mut decryptor, None).unwrap().1; // FIXME: check decryption error
+    pub fn unwrap(&self, decryptor: &mut dyn Decryptor) -> anyhow::Result<FileKey> {
+        let session_key = self.0.decrypt(decryptor, None).unwrap().1; // FIXME: check decryption error
         let mut file_key = [0u8; 16];
         file_key.copy_from_slice(&session_key); // FIXME: check length of session key
         Ok(FileKey::from(file_key))
