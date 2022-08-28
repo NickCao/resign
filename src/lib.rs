@@ -14,7 +14,7 @@ use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use sequoia_openpgp as openpgp;
-use ssh_agent_lib::proto::Blob;
+
 
 pub mod agent;
 pub mod pkesk;
@@ -69,6 +69,7 @@ impl Backend {
     pub fn auth<'a>(
         &mut self,
         tx: Open,
+        hash_algo: HashAlgorithm,
         data: &[u8],
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<Vec<u8>> {
@@ -77,16 +78,11 @@ impl Backend {
             .user_card()
             .unwrap()
             .authenticator(touch_prompt)?
-            .sign(HashAlgorithm::Unknown(0), data)?;
-        let blob = match blob {
+            .sign(hash_algo, data)?;
+        Ok(match blob {
             mpi::Signature::EdDSA { r, s } => [r.value(), s.value()].concat(),
             _ => unimplemented!(),
-        };
-        Ok(ssh_agent_lib::proto::Signature {
-            algorithm: "ssh-ed25519".to_string(),
-            blob,
-        }
-        .to_blob()?)
+        })
     }
 
     fn verify_user<'a>(&mut self, mut tx: Open<'a>, signing: bool) -> anyhow::Result<Open<'a>> {

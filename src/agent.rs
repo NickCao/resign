@@ -1,8 +1,9 @@
 use openpgp_card::KeyType;
 use sequoia_openpgp::crypto::mpi::PublicKey;
 use sequoia_openpgp::types::Curve;
-use ssh_agent_lib::proto::Identity;
-use ssh_agent_lib::proto::Message;
+use sequoia_openpgp::types::HashAlgorithm;
+use ssh_agent_lib::proto::Blob;
+use ssh_agent_lib::proto::{Identity, Message, Signature};
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -33,12 +34,20 @@ impl ssh_agent_lib::Agent for Agent {
                 }]))
             }
             Message::SignRequest(request) => {
-                let signature = self
-                    .backend
-                    .lock()
-                    .unwrap()
-                    .transaction(None, &|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
-                Ok(Message::SignResponse(signature))
+                let signature =
+                    self.backend
+                        .lock()
+                        .unwrap()
+                        .transaction(None, &|backend, tx| {
+                            backend.auth(tx, HashAlgorithm::Unknown(0), &request.data, &|| {})
+                        })?;
+                Ok(Message::SignResponse(
+                    Signature {
+                        algorithm: "ssh-ed25519".to_string(),
+                        blob: signature,
+                    }
+                    .to_blob()?,
+                ))
             }
             _ => Ok(Message::Failure),
         }
@@ -47,14 +56,15 @@ impl ssh_agent_lib::Agent for Agent {
 
 pub fn encode_pubkey(key: &PublicKey) -> anyhow::Result<Vec<u8>> {
     let blob = match key {
-        PublicKey::ECDSA {
+        PublicKey::EdDSA {
             curve: Curve::Ed25519,
             q,
         } => {
+            let points = q.decode_point(&Curve::Ed25519).unwrap();
             let mut blob = vec![0, 0, 0, 0xb];
             blob.extend(b"ssh-ed25519");
             blob.extend(vec![0, 0, 0, 0x20]);
-            blob.extend(q.value());
+            blob.extend([points.0, points.1].concat());
             blob
         }
         _ => unimplemented!(),
