@@ -1,41 +1,35 @@
-use ssh_agent_lib::proto::Identity;
-use std::sync::Arc;
+use ssh_agent_lib::proto::*;
 use std::sync::Mutex;
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct Agent {
-    backend: Arc<Mutex<crate::Backend>>,
+    backend: Mutex<crate::Backend>,
 }
 
 impl ssh_agent_lib::Agent for Agent {
     type Error = anyhow::Error;
-    fn handle(
-        &self,
-        request: ssh_agent_lib::proto::Message,
-    ) -> Result<ssh_agent_lib::proto::Message, Self::Error> {
+    fn handle(&self, request: Message) -> Result<Message, Self::Error> {
         match request {
-            ssh_agent_lib::proto::Message::RequestIdentities => {
+            Message::RequestIdentities => {
                 let (pubkey_blob, comment) = self
                     .backend
                     .lock()
                     .unwrap()
                     .transaction(None, &|backend, tx| backend.public(tx))?;
-                Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(vec![
-                    Identity {
-                        pubkey_blob,
-                        comment: String::from_utf8_lossy(&comment).to_string(),
-                    },
-                ]))
+                Ok(Message::IdentitiesAnswer(vec![Identity {
+                    pubkey_blob,
+                    comment: String::from_utf8_lossy(&comment).to_string(),
+                }]))
             }
-            ssh_agent_lib::proto::Message::SignRequest(request) => {
+            Message::SignRequest(request) => {
                 let signature = self
                     .backend
                     .lock()
                     .unwrap()
                     .transaction(None, &|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
-                Ok(ssh_agent_lib::proto::Message::SignResponse(signature))
+                Ok(Message::SignResponse(signature))
             }
-            _ => Ok(ssh_agent_lib::proto::Message::Failure),
+            _ => Ok(Message::Failure),
         }
     }
 }
