@@ -22,7 +22,7 @@ impl ssh_agent_lib::Agent for Agent {
                     .backend
                     .lock()
                     .unwrap()
-                    .open(&|backend, tx| backend.public(tx))?;
+                    .transaction(&|backend, tx| backend.public(tx))?;
                 Ok(ssh_agent_lib::proto::Message::IdentitiesAnswer(vec![
                     Identity {
                         pubkey_blob,
@@ -35,7 +35,7 @@ impl ssh_agent_lib::Agent for Agent {
                     .backend
                     .lock()
                     .unwrap()
-                    .open(&|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
+                    .transaction(&|backend, tx| backend.auth(tx, &request.data, &|| {}))?;
                 Ok(ssh_agent_lib::proto::Message::SignResponse(signature))
             }
             _ => Ok(ssh_agent_lib::proto::Message::Failure),

@@ -30,7 +30,7 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn open<T>(
+    pub fn transaction<T>(
         &mut self,
         apply: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {

@@ -120,7 +120,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                 PKESK::try_from(stanza)
                     .map(|s| -> anyhow::Result<()> {
                         let file_key = backend
-                            .open(&|backend, tx| backend.decrypt(tx, &s, &|| {}))
+                            .transaction(&|backend, tx| backend.decrypt(tx, &s, &|| {}))
                             .unwrap();
                         file_keys.insert(index, Ok(file_key));
                         Ok(())
@@ -145,7 +145,7 @@ fn main() -> io::Result<()> {
         ),
         None => {
             let (ident, pk) = resign::Backend::default()
-                .open(&|backend, tx| {
+                .transaction(&|backend, tx| {
                     let ident = tx.application_identifier()?.ident();
                     let pk = backend.public_raw(tx, openpgp_card::KeyType::Decryption)?;
                     Ok((ident, pk))
