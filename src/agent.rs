@@ -1,6 +1,7 @@
 use openpgp_card::KeyType;
 use sequoia_openpgp::crypto::mpi;
 use sequoia_openpgp::crypto::mpi::PublicKey;
+use sequoia_openpgp::crypto::Signer;
 use sequoia_openpgp::types::Curve;
 use sequoia_openpgp::types::HashAlgorithm;
 use ssh_agent_lib::proto::Blob;
@@ -17,50 +18,37 @@ impl ssh_agent_lib::Agent for Agent {
     fn handle(&self, request: Message) -> Result<Message, Self::Error> {
         match request {
             Message::RequestIdentities => {
-                let (pubkey, comment) =
-                    self.backend
-                        .lock()
-                        .unwrap()
-                        .transaction(None, &|backend, tx| {
-                            let comment = tx.application_identifier()?.ident();
-                            let pubkey = backend
-                                .public(tx, KeyType::Authentication)?
-                                .mpis()
-                                .to_owned();
-                            Ok((pubkey, comment))
-                        })?;
-                Ok(Message::IdentitiesAnswer(vec![Identity {
-                    pubkey_blob: encode_pubkey(&pubkey)?,
-                    comment,
-                }]))
+                let ident = self
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .transaction(None, &|backend, tx| {
+                        let comment = tx.application_identifier()?.ident();
+                        let pubkey = backend.public(tx, KeyType::Authentication)?;
+                        Ok(Identity {
+                            pubkey_blob: encode_pubkey(pubkey.mpis())?,
+                            comment,
+                        })
+                    })?;
+                Ok(Message::IdentitiesAnswer(vec![ident]))
             }
             Message::SignRequest(request) => {
-                let signature =
-                    self.backend
-                        .lock()
-                        .unwrap()
-                        .transaction(None, &|backend, tx| {
-                            backend.auth(
-                                tx,
-                                &|au| {
-                                    let sig = au.sign(HashAlgorithm::Unknown(0), &request.data)?;
-                                    match sig {
-                                        mpi::Signature::EdDSA { r, s } => {
-                                            Ok([r.value(), s.value()].concat())
-                                        }
-                                        _ => unimplemented!(),
-                                    }
-                                },
-                                &|| {},
-                            )
-                        })?;
-                Ok(Message::SignResponse(
-                    Signature {
-                        algorithm: "ssh-ed25519".to_string(),
-                        blob: signature,
+                let sign = &|au: &mut dyn Signer| {
+                    let sig = au.sign(HashAlgorithm::Unknown(0), &request.data)?;
+                    match sig {
+                        mpi::Signature::EdDSA { r, s } => Ok(Signature {
+                            algorithm: "ssh-ed25519".to_string(),
+                            blob: [r.value(), s.value()].concat(),
+                        }),
+                        _ => unimplemented!(),
                     }
-                    .to_blob()?,
-                ))
+                };
+                let sig = self
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .transaction(None, &|backend, tx| backend.auth(tx, sign, &|| {}))?;
+                Ok(Message::SignResponse(sig.to_blob()?))
             }
             _ => Ok(Message::Failure),
         }
