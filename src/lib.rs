@@ -1,19 +1,17 @@
 use anyhow::anyhow;
-
-use openpgp::crypto::Decryptor;
-use openpgp::crypto::Signer;
-use openpgp::packet::key::PublicParts;
-use openpgp::packet::key::UnspecifiedRole;
-use openpgp::packet::prelude::Key;
-
-use openpgp_card::KeyType;
-use openpgp_card::OpenPgp;
+use openpgp_card::{KeyType, OpenPgp};
 use openpgp_card_pcsc::PcscBackend;
 use openpgp_card_sequoia::card::Open;
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
-use sequoia_openpgp as openpgp;
+use sequoia_openpgp::{
+    crypto::{Decryptor, Signer},
+    packet::{
+        key::{PublicParts, UnspecifiedRole},
+        Key,
+    },
+};
 
 pub mod agent;
 pub mod pkesk;
@@ -48,7 +46,7 @@ impl Backend {
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         openpgp_card_sequoia::util::key_slot(&mut tx, key_type)?
-            .ok_or_else(|| anyhow!("no key matching key type"))
+            .ok_or_else(|| anyhow!("no key matching requested type"))
     }
 
     pub fn decrypt<'a, T>(
@@ -58,7 +56,9 @@ impl Backend {
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<T> {
         let mut tx = self.verify_user(tx, false)?;
-        let mut card = tx.user_card().unwrap();
+        let mut card = tx
+            .user_card()
+            .ok_or_else(|| anyhow!("failed to open user card"))?;
         let mut decryptor = card.decryptor(touch_prompt)?;
         operation(&mut decryptor)
     }
@@ -70,7 +70,9 @@ impl Backend {
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<T> {
         let mut tx = self.verify_user(tx, false)?;
-        let mut card = tx.user_card().unwrap();
+        let mut card = tx
+            .user_card()
+            .ok_or_else(|| anyhow!("failed to open user card"))?;
         let mut authenticator = card.authenticator(touch_prompt)?;
         operation(&mut authenticator)
     }
