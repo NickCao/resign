@@ -1,4 +1,5 @@
-use age_core::format::{FileKey, Stanza};
+use age_core::format::{FileKey, Stanza, FILE_KEY_BYTES};
+use anyhow::anyhow;
 use secrecy::ExposeSecret;
 use sequoia_openpgp::packet::prelude::PKESK3;
 use sequoia_openpgp::packet::{key::UnspecifiedRole, Key};
@@ -14,7 +15,7 @@ const STANZA_TAG: &str = "resign-pkesk-v1";
 pub struct PKESK(packet::PKESK);
 
 impl PKESK {
-    pub fn wrap(
+    pub fn encrypt(
         file_key: &FileKey,
         rcpt: &Key<PublicParts, UnspecifiedRole>,
     ) -> anyhow::Result<Self> {
@@ -22,10 +23,14 @@ impl PKESK {
         let pkesk = PKESK3::for_recipient(SymmetricAlgorithm::AES128, &data, rcpt)?;
         Ok(PKESK(packet::PKESK::V3(pkesk)))
     }
-    pub fn unwrap(&self, decryptor: &mut dyn Decryptor) -> anyhow::Result<FileKey> {
-        let session_key = self.0.decrypt(decryptor, None).unwrap().1; // FIXME: check decryption error
-        let mut file_key = [0u8; 16];
-        file_key.copy_from_slice(&session_key); // FIXME: check length of session key
+    pub fn decrypt(&self, decryptor: &mut dyn Decryptor) -> anyhow::Result<FileKey> {
+        let session_key = self
+            .0
+            .decrypt(decryptor, None)
+            .ok_or_else(|| anyhow!("decryption failed"))?
+            .1;
+        let mut file_key = [0u8; FILE_KEY_BYTES];
+        file_key.copy_from_slice(&session_key);
         Ok(FileKey::from(file_key))
     }
 }

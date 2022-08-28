@@ -74,7 +74,7 @@ impl RecipientPluginV1 for RecipientPlugin {
                 self.recipients
                     .iter()
                     .map(|pk| {
-                        Ok(PKESK::wrap(&file_key, pk)
+                        Ok(PKESK::encrypt(&file_key, pk)
                             .map_err(|e| {
                                 vec![recipient::Error::Internal {
                                     message: e.to_string(),
@@ -121,7 +121,7 @@ impl IdentityPluginV1 for IdentityPlugin {
                     .map(|s| -> anyhow::Result<()> {
                         let file_key = backend
                             .transaction(None, &|backend, tx| {
-                                backend.decrypt(tx, &|de| s.unwrap(de), &|| {})
+                                backend.decrypt(tx, &|de| s.decrypt(de), &|| {})
                             })
                             .unwrap();
                         file_keys.insert(index, Ok(file_key));
