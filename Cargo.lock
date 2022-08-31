@@ -31,7 +31,7 @@ dependencies = [
  "nom 7.1.1",
  "rand 0.8.5",
  "secrecy",
- "sha2",
+ "sha2 0.10.2",
  "tempfile",
 ]
 
@@ -158,6 +158,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "block-buffer"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4152116fd6e9dadb291ae18fc1ec3575ed6d84c29642d97890f4b4a3417297e4"
+dependencies = [
+ "generic-array",
 ]
 
 [[package]]
@@ -473,7 +482,7 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2fb860ca6fafa5552fb6d0e816a69c8e49f0908bf524e30a90d97c85892d506"
 dependencies = [
- "block-buffer",
+ "block-buffer 0.10.2",
  "crypto-common",
  "subtle",
 ]
@@ -852,6 +861,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
+name = "md-5"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5a279bb9607f9f53c22d496eade00d138d1bdcccd07d74650387cf94942a15"
+dependencies = [
+ "block-buffer 0.9.0",
+ "digest 0.9.0",
+ "opaque-debug",
+]
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1071,6 +1091,19 @@ dependencies = [
  "nettle",
  "openpgp-card",
  "sequoia-openpgp",
+ "thiserror",
+]
+
+[[package]]
+name = "openssh-keys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7249a699cdeea261ac73f1bf9350777cb867324f44373aafb5a287365bf1771"
+dependencies = [
+ "base64",
+ "byteorder",
+ "md-5",
+ "sha2 0.9.9",
  "thiserror",
 ]
 
@@ -1398,6 +1431,7 @@ dependencies = [
  "openpgp-card",
  "openpgp-card-pcsc",
  "openpgp-card-sequoia",
+ "openssh-keys",
  "pinentry",
  "secrecy",
  "sequoia-openpgp",
@@ -1518,6 +1552,19 @@ checksum = "f31bf4e9fe5cd8cea8e0887e2e4eb1b4d736ff11b776c8537bf0912a4b381285"
 dependencies = [
  "digest 0.9.0",
  "generic-array",
+]
+
+[[package]]
+name = "sha2"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d58a1e1bf39749807d89cf2d98ac2dfa0ff1cb3faa38fbb64dd88ac8013d800"
+dependencies = [
+ "block-buffer 0.9.0",
+ "cfg-if 1.0.0",
+ "cpufeatures",
+ "digest 0.9.0",
+ "opaque-debug",
 ]
 
 [[package]]

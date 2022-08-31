@@ -62,11 +62,17 @@ pub fn encode_pubkey(key: &PublicKey) -> anyhow::Result<Vec<u8>> {
             q,
         } => {
             let points = q.decode_point(&Curve::Ed25519)?;
-            let mut blob = vec![0, 0, 0, 0xb];
-            blob.extend(b"ssh-ed25519");
-            blob.extend(vec![0, 0, 0, 0x20]);
-            blob.extend([points.0, points.1].concat());
-            blob
+            openssh_keys::PublicKey {
+                data: openssh_keys::Data::Ed25519 {
+                    key: [points.0, points.1].concat(),
+                },
+                options: None,
+                comment: None,
+            }
+            .data()
+        }
+        PublicKey::RSA { e, n } => {
+            openssh_keys::PublicKey::from_rsa(e.value().to_vec(), n.value().to_vec()).data()
         }
         _ => unimplemented!(),
     };
