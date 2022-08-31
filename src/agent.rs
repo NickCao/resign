@@ -4,6 +4,8 @@ use sequoia_openpgp::crypto::mpi::PublicKey;
 use sequoia_openpgp::crypto::Signer;
 use sequoia_openpgp::types::Curve;
 use sequoia_openpgp::types::HashAlgorithm;
+use sequoia_openpgp::types::PublicKeyAlgorithm;
+use sha2::Digest;
 use ssh_agent_lib::proto::Blob;
 use ssh_agent_lib::proto::{Identity, Message, Signature};
 use std::sync::Mutex;
@@ -34,11 +36,25 @@ impl ssh_agent_lib::Agent for Agent {
             }
             Message::SignRequest(request) => {
                 let sign = &|au: &mut dyn Signer| {
-                    let sig = au.sign(HashAlgorithm::Unknown(0), &request.data)?;
+                    let sig = match au.public().pk_algo() {
+                        PublicKeyAlgorithm::EdDSA => {
+                            au.sign(HashAlgorithm::Unknown(0), &request.data)
+                        }
+                        PublicKeyAlgorithm::RSAEncryptSign => {
+                            let mut hasher = sha2::Sha512::new();
+                            hasher.update(&request.data);
+                            au.sign(HashAlgorithm::SHA512, &hasher.finalize())
+                        }
+                        _ => unimplemented!(),
+                    }?;
                     match sig {
                         mpi::Signature::EdDSA { r, s } => Ok(Signature {
                             algorithm: "ssh-ed25519".to_string(),
                             blob: [r.value(), s.value()].concat(),
+                        }),
+                        mpi::Signature::RSA { s } => Ok(Signature {
+                            algorithm: "rsa-sha2-512".to_string(),
+                            blob: s.value().to_vec(),
                         }),
                         _ => unimplemented!(),
                     }
