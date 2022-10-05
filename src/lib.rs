@@ -27,14 +27,14 @@ impl Backend {
         ident: Option<&str>,
         operation: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {
-        let mut card = match ident {
+        let card = match ident {
             Some(ident) => PcscBackend::open_by_ident(ident, None)?,
             None => PcscBackend::cards(None)?
                 .into_iter()
                 .next()
                 .ok_or_else(|| anyhow!("no card available"))?,
         };
-        let mut card = OpenPgp::new(&mut card);
+        let mut card = OpenPgp::new(card);
         let tx = card.transaction()?;
         let tx = Open::new(tx)?;
         operation(self, tx)
