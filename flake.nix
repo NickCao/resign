@@ -21,6 +21,7 @@
             };
             nativeBuildInputs = [ pkg-config cmake rustPlatform.bindgenHook ];
             buildInputs = [ nettle pcsclite ];
+            doCheck = false;
           };
         };
       });
