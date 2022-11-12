@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use openpgp_card::{KeyType, OpenPgp};
+use openpgp_card::KeyType;
 use openpgp_card_pcsc::PcscBackend;
-use openpgp_card_sequoia::card::Open;
+use openpgp_card_sequoia::{state, Card};
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
@@ -25,7 +25,7 @@ impl Backend {
     pub fn transaction<T>(
         &mut self,
         ident: Option<&str>,
-        operation: &dyn Fn(&mut Self, Open) -> anyhow::Result<T>,
+        operation: &dyn Fn(&mut Self, Card<state::Transaction>) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {
         let card = match ident {
             Some(ident) => PcscBackend::open_by_ident(ident, None)?,
@@ -34,24 +34,23 @@ impl Backend {
                 .next()
                 .ok_or_else(|| anyhow!("no card available"))?,
         };
-        let mut card = OpenPgp::new(card);
+        let mut card: Card<state::Open> = card.into();
         let tx = card.transaction()?;
-        let tx = Open::new(tx)?;
         operation(self, tx)
     }
 
-    pub fn public(
+    pub fn public<'a>(
         &mut self,
-        mut tx: Open,
+        mut tx: Card<state::Transaction<'a>>,
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
-        openpgp_card_sequoia::util::key_slot(&mut tx, key_type)?
+        tx.public_key(key_type)?
             .ok_or_else(|| anyhow!("no key matching requested type"))
     }
 
     pub fn decrypt<'a, T>(
         &mut self,
-        tx: Open,
+        tx: Card<state::Transaction<'a>>,
         operation: &dyn Fn(&mut dyn Decryptor) -> anyhow::Result<T>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<T> {
@@ -65,7 +64,7 @@ impl Backend {
 
     pub fn auth<'a, T>(
         &mut self,
-        tx: Open,
+        tx: Card<state::Transaction<'a>>,
         operation: &dyn Fn(&mut dyn Signer) -> anyhow::Result<T>,
         touch_prompt: &'a (dyn Fn() + Send + Sync),
     ) -> anyhow::Result<T> {
@@ -77,7 +76,11 @@ impl Backend {
         operation(&mut authenticator)
     }
 
-    fn verify_user<'a>(&mut self, mut tx: Open<'a>, signing: bool) -> anyhow::Result<Open<'a>> {
+    fn verify_user<'a>(
+        &mut self,
+        mut tx: Card<state::Transaction<'a>>,
+        signing: bool,
+    ) -> anyhow::Result<Card<state::Transaction<'a>>> {
         let ident = tx.application_identifier()?.ident();
 
         let pin = match &self.pin {
