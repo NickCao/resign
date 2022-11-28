@@ -1,10 +1,10 @@
 use anyhow::anyhow;
+use linux_keyutils::{KeyError, KeyRing, KeyRingIdentifier};
 use openpgp_card::KeyType;
 use openpgp_card_pcsc::PcscBackend;
 use openpgp_card_sequoia::{state, Card};
 use pinentry::PassphraseInput;
 use secrecy::ExposeSecret;
-use secrecy::SecretString;
 use sequoia_openpgp::{
     crypto::{Decryptor, Signer},
     packet::{
@@ -17,9 +17,7 @@ pub mod agent;
 pub mod pkesk;
 
 #[derive(Default)]
-pub struct Backend {
-    pin: Option<SecretString>,
-}
+pub struct Backend {}
 
 impl Backend {
     pub fn transaction<T>(
@@ -81,11 +79,13 @@ impl Backend {
         mut tx: Card<state::Transaction<'a>>,
         signing: bool,
     ) -> anyhow::Result<Card<state::Transaction<'a>>> {
+        let keyring = KeyRing::from_special_id(KeyRingIdentifier::Process, true).unwrap();
         let ident = tx.application_identifier()?.ident();
+        let key = keyring.search(&ident);
 
-        let pin = match &self.pin {
-            Some(pin) => pin.clone(),
-            _ => {
+        let key = match key {
+            Ok(key) => key,
+            Err(KeyError::KeyDoesNotExist) => {
                 let mut input = PassphraseInput::with_default_binary()
                     .ok_or_else(|| anyhow!("pinentry binary not found"))?;
                 let pin = input
@@ -93,22 +93,21 @@ impl Backend {
                     .with_prompt("PIN")
                     .interact()
                     .map_err(|e| anyhow!(e))?;
-                pin
+                keyring.add_key(&ident, pin.expose_secret()).unwrap()
             }
+            Err(e) => return Err(anyhow!("{:?}", e)),
         };
 
         let verify = if signing {
-            tx.verify_user_for_signing(pin.expose_secret().as_bytes())
+            tx.verify_user_for_signing(&key.read_to_vec().unwrap())
         } else {
-            tx.verify_user(pin.expose_secret().as_bytes())
+            tx.verify_user(&key.read_to_vec().unwrap())
         };
+
         match verify {
-            Ok(()) => {
-                self.pin = Some(pin);
-                Ok(tx)
-            }
+            Ok(()) => Ok(tx),
             Err(e) => {
-                self.pin = None;
+                keyring.unlink_key(key).unwrap();
                 Err(e.into())
             }
         }

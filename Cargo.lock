@@ -904,6 +904,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux-keyutils"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b329293ccf3bd46e1f7af07d3c0b3d22867afbf822f59933249ca13534fed4a"
+dependencies = [
+ "bitflags",
+ "libc",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1511,6 +1521,7 @@ dependencies = [
  "age-plugin",
  "anyhow",
  "clap",
+ "linux-keyutils",
  "openpgp-card",
  "openpgp-card-pcsc",
  "openpgp-card-sequoia",
