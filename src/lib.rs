@@ -79,19 +79,18 @@ impl Backend {
         mut tx: Card<state::Transaction<'a>>,
         signing: bool,
     ) -> anyhow::Result<Card<state::Transaction<'a>>> {
-        log::debug!("get or create keyring");
         let keyring = KeyRing::from_special_id(KeyRingIdentifier::Process, true).unwrap();
         let ident = tx.application_identifier()?.ident();
-        log::debug!("search for key in keyring");
+        log::info!("search for key {} in keyring", ident);
         let key = keyring.search(&ident);
 
         let key = match key {
             Ok(key) => {
-                log::debug!("found key in keyring");
+                log::info!("found key in keyring");
                 key
             }
             Err(KeyError::KeyDoesNotExist) => {
-                log::debug!("failed to find key in keyring");
+                log::info!("failed to find key in keyring");
                 let mut input = PassphraseInput::with_default_binary()
                     .ok_or_else(|| anyhow!("pinentry binary not found"))?;
                 let pin = input
@@ -102,7 +101,6 @@ impl Backend {
                 keyring.add_key(&ident, pin.expose_secret()).unwrap()
             }
             Err(e) => {
-                log::debug!("unexpected error: {}", e);
                 return Err(anyhow!("{:?}", e));
             }
         };
@@ -114,12 +112,8 @@ impl Backend {
         };
 
         match verify {
-            Ok(()) => {
-                log::debug!("successfully verified user");
-                Ok(tx)
-            }
+            Ok(()) => Ok(tx),
             Err(e) => {
-                log::debug!("user verification failed");
                 keyring.unlink_key(key).unwrap();
                 Err(e.into())
             }
