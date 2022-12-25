@@ -16,8 +16,17 @@ use sequoia_openpgp::{
 pub mod agent;
 pub mod pkesk;
 
-#[derive(Default)]
-pub struct Backend {}
+pub struct Backend {
+    keyring: KeyRing,
+}
+
+impl Default for Backend {
+    fn default() -> Self {
+        Self {
+            keyring: KeyRing::from_special_id(KeyRingIdentifier::Process, true).unwrap(),
+        }
+    }
+}
 
 impl Backend {
     pub fn transaction<T>(
@@ -79,18 +88,12 @@ impl Backend {
         mut tx: Card<state::Transaction<'a>>,
         signing: bool,
     ) -> anyhow::Result<Card<state::Transaction<'a>>> {
-        let keyring = KeyRing::from_special_id(KeyRingIdentifier::Process, true).unwrap();
         let ident = tx.application_identifier()?.ident();
-        log::info!("search for key {} in keyring", ident);
-        let key = keyring.search(&ident);
+        let key = self.keyring.search(&ident);
 
         let key = match key {
-            Ok(key) => {
-                log::info!("found key in keyring");
-                key
-            }
+            Ok(key) => key,
             Err(KeyError::KeyDoesNotExist) => {
-                log::info!("failed to find key in keyring");
                 let mut input = PassphraseInput::with_default_binary()
                     .ok_or_else(|| anyhow!("pinentry binary not found"))?;
                 let pin = input
@@ -98,7 +101,7 @@ impl Backend {
                     .with_prompt("PIN")
                     .interact()
                     .map_err(|e| anyhow!(e))?;
-                keyring.add_key(&ident, pin.expose_secret()).unwrap()
+                self.keyring.add_key(&ident, pin.expose_secret()).unwrap()
             }
             Err(e) => {
                 return Err(anyhow!("{:?}", e));
@@ -114,7 +117,7 @@ impl Backend {
         match verify {
             Ok(()) => Ok(tx),
             Err(e) => {
-                keyring.unlink_key(key).unwrap();
+                self.keyring.unlink_key(key).unwrap();
                 Err(e.into())
             }
         }
