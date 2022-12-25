@@ -12,6 +12,7 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    env_logger::init();
     let args = Args::parse();
     let agent = Agent::default();
 
