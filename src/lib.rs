@@ -46,9 +46,9 @@ impl Backend {
         operation(self, tx)
     }
 
-    pub fn public<'a>(
+    pub fn public(
         &mut self,
-        mut tx: Card<state::Transaction<'a>>,
+        mut tx: Card<state::Transaction<'_>>,
         key_type: KeyType,
     ) -> anyhow::Result<Key<PublicParts, UnspecifiedRole>> {
         tx.public_key(key_type)?
