@@ -101,7 +101,9 @@ impl Backend {
                     .with_prompt("PIN")
                     .interact()
                     .map_err(|e| anyhow!(e))?;
-                self.keyring.add_key(&ident, pin.expose_secret()).unwrap()
+                self.keyring
+                    .add_key(&ident, pin.expose_secret())
+                    .map_err(|_| anyhow!("invalid key"))?
             }
             Err(e) => {
                 return Err(anyhow!("{:?}", e));
